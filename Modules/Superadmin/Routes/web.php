@@ -6,7 +6,7 @@
 
 Route::get('/pricing', [Modules\Superadmin\Http\Controllers\PricingController::class, 'index'])->name('pricing');
 
-Route::middleware('web', 'auth', 'language', 'AdminSidebarMenu', 'superadmin')->prefix('superadmin')->group(function () {
+Route::middleware('web', 'SetSessionData', 'auth', 'language', 'AdminSidebarMenu', 'superadmin')->prefix('superadmin')->group(function () {
     Route::get('/install', [Modules\Superadmin\Http\Controllers\InstallController::class, 'index']);
     Route::get('/install/update', [Modules\Superadmin\Http\Controllers\InstallController::class, 'update']);
     Route::get('/install/uninstall', [Modules\Superadmin\Http\Controllers\InstallController::class, 'uninstall']);
@@ -36,6 +36,11 @@ Route::middleware('web', 'auth', 'language', 'AdminSidebarMenu', 'superadmin')->
     Route::get('/communicator/get-history', [Modules\Superadmin\Http\Controllers\CommunicatorController::class, 'getHistory']);
 
     Route::resource('/frontend-pages', 'Modules\Superadmin\Http\Controllers\PageController');
+
+    // Master Products (superadmin-defined catalog synced to all tenants)
+    Route::get('/master-products', [Modules\Superadmin\Http\Controllers\SuperadminProductController::class, 'index'])->name('master-products.index');
+    Route::get('/master-products/{id}', [Modules\Superadmin\Http\Controllers\SuperadminProductController::class, 'show'])->name('master-products.show');
+
 });
 
 Route::middleware('web', 'SetSessionData', 'auth', 'language', 'timezone', 'AdminSidebarMenu')->group(function () {

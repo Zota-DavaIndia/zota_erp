@@ -56,6 +56,25 @@ class ProductController extends Controller
     }
 
     /**
+     * Check if current user is a superadmin.
+     */
+    private function isSuperadmin()
+    {
+        $user = auth()->user();
+        if (empty($user)) {
+            return false;
+        }
+        $administrator_list = config('constants.administrator_usernames');
+        if (empty($administrator_list)) {
+            return false;
+        }
+        return in_array(
+            strtolower($user->username),
+            explode(',', strtolower($administrator_list))
+        );
+    }
+
+    /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
@@ -444,6 +463,9 @@ class ProductController extends Controller
         if (! auth()->user()->can('product.create')) {
             abort(403, 'Unauthorized action.');
         }
+
+        $is_superadmin = $this->isSuperadmin();
+
         try {
             $business_id = $request->session()->get('user.business_id');
             $form_fields = ['name', 'brand_id', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_description', 'sub_unit_ids', 'preparation_time_in_minutes', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_custom_field5', 'product_custom_field6', 'product_custom_field7', 'product_custom_field8', 'product_custom_field9', 'product_custom_field10', 'product_custom_field11', 'product_custom_field12', 'product_custom_field13', 'product_custom_field14', 'product_custom_field15', 'product_custom_field16', 'product_custom_field17', 'product_custom_field18', 'product_custom_field19', 'product_custom_field20',];
@@ -455,6 +477,11 @@ class ProductController extends Controller
 
             $product_details = $request->only($form_fields);
             $product_details['business_id'] = $business_id;
+
+            // If superadmin, mark product as master so it syncs to all businesses
+            if ($is_superadmin) {
+                $product_details['is_master_product'] = 1;
+            }
             $product_details['created_by'] = $request->session()->get('user.id');
 
             $product_details['enable_stock'] = (! empty($request->input('enable_stock')) && $request->input('enable_stock') == 1) ? 1 : 0;
@@ -553,6 +580,18 @@ class ProductController extends Controller
             Media::uploadMedia($product->business_id, $product, $request, 'product_brochure', true);
 
             DB::commit();
+
+            // If superadmin, sync product to all businesses (defensive: never block the product save)
+            if ($is_superadmin && $this->moduleUtil->isSuperadminInstalled()) {
+                try {
+                    \Modules\Superadmin\Http\Controllers\SuperadminProductController::syncMasterProductToAllBusinesses($product);
+                } catch (\Exception $e) {
+                    \Log::error('Master product sync after store failed: ' . $e->getMessage(), [
+                        'product_id' => $product->id,
+                    ]);
+                }
+            }
+
             $output = ['success' => 1,
                 'msg' => __('product.product_added_success'),
             ];
@@ -675,6 +714,8 @@ class ProductController extends Controller
         if (! auth()->user()->can('product.update')) {
             abort(403, 'Unauthorized action.');
         }
+
+        $is_superadmin = $this->isSuperadmin();
 
         try {
             $business_id = $request->session()->get('user.business_id');
@@ -874,6 +915,18 @@ class ProductController extends Controller
             Media::uploadMedia($product->business_id, $product, $request, 'product_brochure', true);
 
             DB::commit();
+
+            // If superadmin and this is a master product, sync updates to all businesses (defensive)
+            if ($is_superadmin && !empty($product->is_master_product) && $this->moduleUtil->isSuperadminInstalled()) {
+                try {
+                    \Modules\Superadmin\Http\Controllers\SuperadminProductController::syncMasterProductUpdateToBusinesses($product);
+                } catch (\Exception $e) {
+                    \Log::error('Master product update sync failed: ' . $e->getMessage(), [
+                        'product_id' => $product->id,
+                    ]);
+                }
+            }
+
             $output = ['success' => 1,
                 'msg' => __('product.product_updated_success'),
             ];
@@ -1008,6 +1061,18 @@ class ProductController extends Controller
                 if ($can_be_deleted) {
                     if (! empty($product)) {
                         DB::beginTransaction();
+
+                        // If superadmin and master product, delete synced copies in all businesses (defensive)
+                        if (!empty($product->is_master_product) && $this->isSuperadmin() && $this->moduleUtil->isSuperadminInstalled()) {
+                            try {
+                                \Modules\Superadmin\Http\Controllers\SuperadminProductController::deleteSyncedBusinessProducts($product->id);
+                            } catch (\Exception $e) {
+                                \Log::error('Master product delete-sync failed: ' . $e->getMessage(), [
+                                    'product_id' => $product->id,
+                                ]);
+                            }
+                        }
+
                         //Delete variation location details
                         VariationLocationDetails::where('product_id', $id)
                                                 ->delete();

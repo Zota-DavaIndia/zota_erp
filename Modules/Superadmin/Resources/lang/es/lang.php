@@ -194,4 +194,5 @@ return [
     'offline_payment_details_tooltip' => 'Instrucciones de pago sin conexión, como detalles de la cuenta bancaria',
     'allow_registration' => 'Permitir registro',
     'flutterwave_help_text' => 'Haga clic en este enlace para comprobar las monedas admitidas para flutterwave',
+    'master_products' => 'Master Products',
 ];

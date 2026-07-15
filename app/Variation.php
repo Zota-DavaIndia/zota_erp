@@ -36,6 +36,23 @@ class Variation extends Model
     }
 
     /**
+     * Get the master variation this variation was synced from (if any).
+     * Self-referential: a business copy variation points to the master variation row.
+     */
+    public function masterVariation()
+    {
+        return $this->belongsTo(\App\Variation::class, 'master_variation_id');
+    }
+
+    /**
+     * Get all business copies of this master variation.
+     */
+    public function masterVariationCopies()
+    {
+        return $this->hasMany(\App\Variation::class, 'master_variation_id');
+    }
+
+    /**
      * Get the sell lines associated with the variation.
      */
     public function sell_lines()

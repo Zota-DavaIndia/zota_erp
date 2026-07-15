@@ -317,6 +317,15 @@ class BusinessController extends BaseController
 
             DB::commit();
 
+            //Sync master products to the new business (defensive: never block business creation)
+            try {
+                SuperadminProductController::syncAllProductsToBusiness($business);
+            } catch (\Exception $e) {
+                \Log::error('Master product sync to new superadmin-created business failed: ' . $e->getMessage(), [
+                    'business_id' => $business->id,
+                ]);
+            }
+
             //Module function to be called after after business is created
             if (config('app.env') != 'demo') {
                 $this->moduleUtil->getModuleData('after_business_created', ['business' => $business]);

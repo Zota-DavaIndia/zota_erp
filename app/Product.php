@@ -222,4 +222,37 @@ class Product extends Model
     {
         return $this->hasMany(\App\ProductRack::class);
     }
+
+    /**
+     * Get the business this product belongs to.
+     */
+    public function business()
+    {
+        return $this->belongsTo(\App\Business::class);
+    }
+
+    /**
+     * Get the master product this product was synced from (if any).
+     * Self-referential: a business copy points to the master product row.
+     */
+    public function masterProduct()
+    {
+        return $this->belongsTo(\App\Product::class, 'master_product_id');
+    }
+
+    /**
+     * Get all business copies that were synced from this master product.
+     */
+    public function masterProductCopies()
+    {
+        return $this->hasMany(\App\Product::class, 'master_product_id');
+    }
+
+    /**
+     * Scope to only master products.
+     */
+    public function scopeMasterProducts($query)
+    {
+        return $query->where('is_master_product', 1);
+    }
 }
