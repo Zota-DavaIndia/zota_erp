@@ -223,6 +223,23 @@
           </div>
         @endif
 
+        @if(in_array($contact->type, ['customer', 'both']))
+        <div class="col-md-6">
+            <div class="form-group" style="margin-top: 25px;">
+                <label class="tw-flex tw-items-center tw-gap-2 tw-cursor-pointer">
+                    <input type="checkbox" name="is_global" value="1" class="tw-w-4 tw-h-4" id="is_global_customer" @if(!empty($contact->is_global)) checked @endif>
+                    <span class="tw-font-semibold tw-text-gray-800">
+                        <i class="fa fa-globe tw-text-emerald-600"></i>
+                        @lang('lang_v1.is_global_customer')
+                    </span>
+                </label>
+                <p class="tw-text-xs tw-text-gray-500 tw-mt-1 tw-ml-6">
+                    @lang('lang_v1.is_global_customer_help')
+                </p>
+            </div>
+        </div>
+        @endif
+
         <div class="col-md-12">
             <button type="button" class="tw-dw-btn tw-dw-btn-primary tw-text-white center-block more_btn" data-target="#more_div">@lang('lang_v1.more_info') <i class="fa fa-chevron-down"></i></button>
         </div>

@@ -16,15 +16,23 @@ class ContactUtil extends Util
      */
     public function getWalkInCustomer($business_id, $array = true)
     {
+        // Walk-In Customer is a single, chain-wide (global) record
+        // shared by every business. We pick the "master" - the row
+        // that is itself not a clone of another contact - and we
+        // deliberately do NOT scope by business_id. Falling back to
+        // a per-business record here is what created the long list of
+        // duplicate "Walk-In Customer" rows that all carry the same
+        // contact_id (CO0001).
         $contact = Contact::whereIn('type', ['customer', 'both'])
-                    ->where('contacts.business_id', $business_id)
                     ->where('contacts.is_default', 1)
+                    ->whereNull('contacts.master_contact_id')
                     ->leftjoin('customer_groups as cg', 'cg.id', '=', 'contacts.customer_group_id')
                     ->select('contacts.*',
                         'cg.amount as discount_percent',
                         'cg.price_calculation_type',
                         'cg.selling_price_group_id'
                     )
+                    ->orderBy('contacts.id')
                     ->first();
 
         if (! empty($contact)) {
@@ -70,9 +78,15 @@ class ContactUtil extends Util
      */
     public function getContactInfo($business_id, $contact_id)
     {
+        // Customers are universal: a contact is visible to any business.
+        // The business_id argument is still passed in for accounting
+        // scoping (transactions, opening balance, etc).
         $contact = Contact::where('contacts.id', $contact_id)
-                    ->where('contacts.business_id', $business_id)
                     ->leftjoin('transactions AS t', 'contacts.id', '=', 't.contact_id')
+                    ->where(function ($q) use ($business_id) {
+                        $q->whereIn('contacts.type', ['customer', 'both'])
+                          ->orWhere('contacts.business_id', $business_id);
+                    })
                     ->with(['business'])
                     ->select(
                         DB::raw("SUM(IF(t.type = 'purchase', final_total, 0)) as total_purchase"),
@@ -97,6 +111,33 @@ class ContactUtil extends Util
                             ->count();
         }
         if ($count == 0) {
+            // If a customer (not supplier) with the same mobile
+            // number already exists anywhere in the chain, link the
+            // request to that record instead of creating a duplicate.
+            // This keeps the customer list deduplicated and ensures
+            // that adding a customer in any store surfaces the same
+            // single record in every other store.
+            if (! empty($input['mobile'])
+                && isset($input['type'])
+                && in_array($input['type'], ['customer', 'both'])) {
+                $existing = Contact::whereIn('type', ['customer', 'both'])
+                    ->whereNull('master_contact_id')
+                    ->where('mobile', $input['mobile'])
+                    ->orderBy('id')
+                    ->first();
+
+                if ($existing) {
+                    $output = [
+                        'success' => true,
+                        'data' => $existing,
+                        'existing' => true,
+                        'msg' => __('contact.added_success'),
+                    ];
+
+                    return $output;
+                }
+            }
+
             //Update reference count
             $ref_count = $this->setAndGetReferenceCount('contacts', $input['business_id']);
 
@@ -132,6 +173,7 @@ class ContactUtil extends Util
 
             $output = ['success' => true,
                 'data' => $contact,
+                'existing' => false,
                 'msg' => __('contact.added_success'),
             ];
 
@@ -144,7 +186,8 @@ class ContactUtil extends Util
     public function updateContact($input, $id, $business_id)
     {
         $count = 0;
-        //Check Contact id
+        //Check Contact id - keep scoped to current business for human-readable
+        //contact id (e.g. CUS-0001). Global customers keep their own reference.
         if (! empty($input['contact_id'])) {
             $count = Contact::where('business_id', $business_id)
                     ->where('contact_id', $input['contact_id'])
@@ -170,7 +213,22 @@ class ContactUtil extends Util
                 unset($input['assigned_to_users']);
             }
 
-            $contact = Contact::where('business_id', $business_id)->findOrFail($id);
+            // Customers are universal, so any business can update any
+            // customer record. Suppliers (and other non-customer types)
+            // remain scoped to the current business.
+            $contact = Contact::where('id', $id)
+                        ->where(function ($q) use ($business_id) {
+                            $q->whereIn('type', ['customer', 'both'])
+                              ->orWhere('business_id', $business_id);
+                        })
+                        ->firstOrFail();
+
+            // Stamp the originating business the first time a global customer
+            // is touched (so we can identify the source business later).
+            if ($contact->is_global && empty($contact->source_business_id)) {
+                $input['source_business_id'] = $business_id;
+            }
+
             foreach ($input as $key => $value) {
                 $contact->$key = $value;
             }
@@ -214,8 +272,19 @@ class ContactUtil extends Util
     public function getContactQuery($business_id, $type, $contact_ids = [])
     {
         $query = Contact::leftjoin('transactions AS t', 'contacts.id', '=', 't.contact_id')
-                    ->leftjoin('customer_groups AS cg', 'contacts.customer_group_id', '=', 'cg.id')
-                    ->where('contacts.business_id', $business_id);
+                    ->leftjoin('customer_groups AS cg', 'contacts.customer_group_id', '=', 'cg.id');
+
+        // Customers are universal across all businesses (any store
+        // can list, search and operate on a customer created in any
+        // other store). Only "master" customer records are returned
+        // to avoid showing the same customer multiple times. Suppliers
+        // and other contact types remain scoped to the current business.
+        if ($type == 'customer') {
+            $query->whereIn('contacts.type', ['customer', 'both'])
+                  ->whereNull('contacts.master_contact_id');
+        } else {
+            $query->where('contacts.business_id', $business_id);
+        }
 
         if ($type == 'supplier') {
             $query->onlySuppliers();

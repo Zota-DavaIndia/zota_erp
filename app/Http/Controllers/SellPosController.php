@@ -2367,9 +2367,12 @@ class SellPosController extends Controller
                 'location_id' => $location_id,
             ];
 
-            $customer = Contact::where('business_id', $business_id)
-                ->whereIn('type', ['customer', 'both'])
-                ->find($input['customer_id']);
+            $customer = Contact::where(function ($q) use ($business_id) {
+                                $q->where('business_id', $business_id)
+                                  ->orWhere('is_global', 1);
+                            })
+                            ->whereIn('type', ['customer', 'both'])
+                            ->find($input['customer_id']);
 
             $order_data = [
                 'business_id' => $business_id,

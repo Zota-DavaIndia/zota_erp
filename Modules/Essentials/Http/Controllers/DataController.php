@@ -406,9 +406,17 @@ class DataController extends Controller
                 ->render();
         } elseif ($data['view'] == 'manage_user.show') {
             $user = ! empty($data['user']) ? $data['user'] : null;
-            $user_department = Category::find($user->essentials_department_id);
-            $user_designstion = Category::find($user->essentials_designation_id);
-            $work_location = BusinessLocation::find($user->location_id);
+            // Defensive: if the parent controller failed to load
+            // the user (e.g. wrong business_id scope, soft-deleted
+            // record) the view partial used to crash with
+            // "read property on null". Render an empty placeholder
+            // instead so the rest of the page still loads.
+            if (empty($user)) {
+                return '<div class="text-muted">—</div>';
+            }
+            $user_department = $user->essentials_department_id ? Category::find($user->essentials_department_id) : null;
+            $user_designstion = $user->essentials_designation_id ? Category::find($user->essentials_designation_id) : null;
+            $work_location = $user->location_id ? BusinessLocation::find($user->location_id) : null;
 
             return view('essentials::partials.user_details_part', compact('user_department', 'user_designstion', 'user', 'work_location'))
                 ->render();

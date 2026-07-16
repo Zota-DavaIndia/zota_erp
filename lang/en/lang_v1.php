@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 return [
     'enable_editing_product_from_purchase' => 'Enable editing product price from purchase screen',
@@ -1472,6 +1472,11 @@ return [
     'automatic' => 'Automatic',
     'payment_reminder_help' => 'If enabled, payment reminder notification will be automatically sent to customer on invoice overdue',
     'new_sale_notification_help' => 'If enabled, sell notification will be automatically sent to customer on creating new sales for them',
+    'is_global_customer' => 'Universal (available across all stores)',
+    'is_global_customer_help' => 'When enabled, this customer will be visible and usable by every store in the chain.',
+    'global_customer' => 'Universal Customer',
+    'global_customer_cannot_delete' => 'This is a chain-wide (universal) customer and can only be deleted from the Super Admin panel.',
+    'user_not_assigned_to_business' => 'Your account has not been assigned to a business yet. Please contact the super admin.',
     'variation_sku' => 'Variation SKUs',
     'variation_sku_ins' => 'SKUs of each variations separated by "|" if product type is variable',
     'lot_number_instructions' => 'Only if Lot number is enabled. You can enable Lot number from <br><code>Business Settings > Purchases > Enable Lot number</code>',

@@ -31,37 +31,36 @@ class BusinessUtil extends Util
     {
         $user = User::find($user_id);
 
-        //create Admin role and assign to user
-        $role = Role::create(['name' => 'Admin#'.$business_id,
-            'business_id' => $business_id,
-            'guard_name' => 'web', 'is_default' => 1,
-        ]);
-        $user->assignRole($role->name);
+        // Roles are a chain-wide catalogue. Instead of only
+        // creating the hard-coded `Admin` and `Cashier` roles for
+        // every new business, we clone every role that the super
+        // admin has defined in their own business (business #1)
+        // into the new business with the same name pattern
+        // (`<RoleName>#<new_business_id>`) and the same permission
+        // set. This is what makes a pre-created user with
+        // pre_create_role = "Pharmacy" actually get the
+        // "Pharmacy" role on assignment instead of silently
+        // falling back to Admin.
+        $admin_role = $this->cloneRolesFromTemplateBusiness($business_id);
 
-        //Create Cashier role for a new business
-        $cashier_role = Role::create(['name' => 'Cashier#'.$business_id,
-            'business_id' => $business_id,
-            'guard_name' => 'web',
-        ]);
-        $cashier_role->syncPermissions(['sell.view', 'sell.create', 'sell.update', 'sell.delete', 'access_all_locations', 'view_cash_register', 'close_cash_register']);
+        // Assign the freshly-cloned Admin role to the owner so
+        // the new business is operable before any pre_create_role
+        // override kicks in.
+        $user->assignRole($admin_role->name);
 
         $business = Business::findOrFail($business_id);
 
-        //Update reference count
-        $ref_count = $this->setAndGetReferenceCount('contacts', $business_id);
-        $contact_id = $this->generateReferenceNumber('contacts', $ref_count, $business_id);
-
-        //Add Default/Walk-In Customer for new business
-        $customer = [
-            'business_id' => $business_id,
-            'type' => 'customer',
-            'name' => 'Walk-In Customer',
-            'created_by' => $user_id,
-            'is_default' => 1,
-            'contact_id' => $contact_id,
-            'credit_limit' => 0,
-        ];
-        Contact::create($customer);
+        // Walk-In Customer is a single, chain-wide (global) record
+        // shared by every business. We do NOT create a new row per
+        // business - that produced dozens of duplicate "Walk-In
+        // Customer" entries in the customer list, one per store, all
+        // stamped with the same contact_id (CO0001). The master
+        // record was created when the very first business was set up
+        // and is reused here. The contact reference counter is still
+        // bumped so that user-created customers in this business get
+        // the next available code, but the walk-in code (CO0001) is
+        // never reissued.
+        $this->setAndGetReferenceCount('contacts', $business_id);
 
         //create default invoice setting for new business
         InvoiceScheme::create(['name' => 'Default',
@@ -135,6 +134,129 @@ class BusinessUtil extends Util
         }
 
         return true;
+    }
+
+    /**
+     * Clone every role that the super admin defined in their own
+     * business into a freshly-created business. The super admin's
+     * business is the lowest `id` in the `business` table (the very
+     * first one, where the owner logs in as `admin`); that
+     * business is treated as the role template for the entire
+     * chain.
+     *
+     * For each template role we create a brand-new `Role` row
+     * named `<RoleName>#<new_business_id>`, attach the same
+     * permission set, and return the cloned Admin role so the
+     * caller can assign it to the new business's owner.
+     *
+     * @param  int  $business_id  the brand-new business id
+     * @return \Spatie\Permission\Models\Role  the cloned Admin role
+     */
+    public function cloneRolesFromTemplateBusiness($business_id)
+    {
+        $template_business = Business::orderBy('id')->first();
+
+        if (! $template_business) {
+            // No template business exists yet (should not happen
+            // since we are creating a new business, which means at
+            // least the super admin's business is in the table).
+            // Fall back to the original hard-coded Admin role.
+            return Role::create(['name' => 'Admin#'.$business_id,
+                'business_id' => $business_id,
+                'guard_name' => 'web', 'is_default' => 1,
+            ]);
+        }
+
+        $template_roles = Role::where('business_id', $template_business->id)->get();
+        $cloned_admin = null;
+
+        foreach ($template_roles as $template) {
+            // Strip the template business suffix and re-attach
+            // the new business suffix so the role name follows
+            // the existing pattern: `RoleName#<biz>`.
+            $base = preg_replace('/#\d+$/', '', $template->name);
+            $new_name = $base . '#' . $business_id;
+
+            $cloned = Role::create([
+                'name'       => $new_name,
+                'business_id' => $business_id,
+                'guard_name' => 'web',
+                'is_default' => $template->is_default,
+            ]);
+
+            // Carry over the permission set so the role is
+            // functional out of the box (Pharmacy, Cashier, etc.
+            // need their permissions to do anything meaningful).
+            $permission_names = $template->permissions->pluck('name')->all();
+            if (! empty($permission_names)) {
+                $cloned->syncPermissions($permission_names);
+            }
+
+            if ($base === 'Admin') {
+                $cloned_admin = $cloned;
+            }
+        }
+
+        // Final safety net: if the template business has no
+        // `Admin` role, create one now so the rest of the system
+        // can still find `Admin#<biz>`.
+        if (! $cloned_admin) {
+            $cloned_admin = Role::create(['name' => 'Admin#'.$business_id,
+                'business_id' => $business_id,
+                'guard_name' => 'web', 'is_default' => 1,
+            ]);
+        }
+
+        return $cloned_admin;
+    }
+
+    /**
+     * On-demand clone of a single role by base name (e.g.
+     * "Pharmacy") from the template business into the given
+     * business. Returns the newly-cloned role, or null if no
+     * matching template role exists.
+     *
+     * Used by `BusinessController::store()` as a defensive
+     * fallback when a pre-created user with a pre_create_role is
+     * being assigned to a business that does not have that role
+     * yet (e.g. the business was created before role cloning was
+     * introduced). Without this fallback, the role assignment
+     * silently fails and the user ends up with the default
+     * Admin#<biz> role.
+     *
+     * @param  int     $business_id
+     * @param  string  $base_name   the role base name, e.g. "Pharmacy"
+     * @return \Spatie\Permission\Models\Role|null
+     */
+    public function cloneRoleFromTemplateByName($business_id, $base_name)
+    {
+        $template_business = Business::orderBy('id')->first();
+        if (! $template_business) {
+            return null;
+        }
+
+        $template = Role::where('business_id', $template_business->id)
+            ->where('name', 'LIKE', preg_replace('/[#%_]/', '\\$0', $base_name) . '#%')
+            ->first();
+
+        if (! $template) {
+            return null;
+        }
+
+        $new_name = $base_name . '#' . $business_id;
+        $cloned = Role::create([
+            'name'        => $new_name,
+            'business_id' => $business_id,
+            'guard_name'  => 'web',
+            'is_default'  => $template->is_default,
+        ]);
+
+        $permission_names = $template->permissions->pluck('name')->all();
+        if (! empty($permission_names)) {
+            $cloned->syncPermissions($permission_names);
+        }
+
+        return $cloned;
     }
 
     /**

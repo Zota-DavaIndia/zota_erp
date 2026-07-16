@@ -14,6 +14,23 @@
 {!! Form::open(['url' => action([\App\Http\Controllers\ManageUserController::class, 'store']), 'method' => 'post', 'id' => 'user_add_form' ]) !!}
   <div class="row">
     <div class="col-md-12">
+      @if(!empty($is_superadmin))
+        @component('components.widget', ['title' => __('superadmin::lang.precreate_user')])
+          <div class="col-md-12">
+            <div class="checkbox">
+              <label>
+                {!! Form::checkbox('pre_create', 1, false, ['class' => 'input-icheck', 'id' => 'pre_create']); !!}
+                <strong>@lang('superadmin::lang.precreate_user_help')</strong>
+              </label>
+            </div>
+            <p class="help-block text-muted" style="margin-top: 4px;">
+              <i class="fa fa-info-circle"></i>
+              @lang('superadmin::lang.precreate_user_help_detail')
+            </p>
+          </div>
+          <div class="clearfix"></div>
+        @endcomponent
+      @endif
   @component('components.widget')
       <div class="col-md-2">
         <div class="form-group">
@@ -117,10 +134,15 @@
       <div class="col-md-6">
         <div class="form-group">
           {!! Form::label('role', __( 'user.role' ) . ':*') !!} @show_tooltip(__('lang_v1.admin_role_location_permission_help'))
-            {!! Form::select('role', $roles, null, ['class' => 'form-control select2']); !!}
+            {!! Form::select('role', $roles, null, ['class' => 'form-control select2', 'id' => 'role']); !!}
+            <p class="help-block" id="role_precreate_note" style="display:none; color: #b46f1d;">
+              <i class="fa fa-info-circle"></i>
+              @lang('superadmin::lang.role_precreate_note')
+            </p>
         </div>
       </div>
-      <div class="clearfix"></div>
+      <div class="clearfix user-business-only-fields"></div>
+      <div class="user-business-only-fields">
       <div class="col-md-3">
           <h4>@lang( 'role.access_locations' ) @show_tooltip(__('tooltip.access_locations_permission'))</h4>
         </div>
@@ -128,8 +150,8 @@
           <div class="col-md-12">
             <div class="checkbox">
                 <label>
-                  {!! Form::checkbox('access_all_locations', 'access_all_locations', true, 
-                ['class' => 'input-icheck']); !!} {{ __( 'role.all_locations' ) }} 
+                  {!! Form::checkbox('access_all_locations', 'access_all_locations', true,
+                ['class' => 'input-icheck']); !!} {{ __( 'role.all_locations' ) }}
                 </label>
                 @show_tooltip(__('tooltip.all_location_permission'))
             </div>
@@ -138,17 +160,18 @@
           <div class="col-md-12">
             <div class="checkbox">
               <label>
-                {!! Form::checkbox('location_permissions[]', 'location.' . $location->id, false, 
+                {!! Form::checkbox('location_permissions[]', 'location.' . $location->id, false,
                 [ 'class' => 'input-icheck']); !!} {{ $location->name }} @if(!empty($location->location_id))({{ $location->location_id}}) @endif
               </label>
             </div>
           </div>
           @endforeach
         </div>
+      </div>
     @endcomponent
   </div>
 
-  <div class="col-md-12">
+  <div class="col-md-12 user-business-fields">
     @component('components.widget', ['title' => __('sale.sells')])
       <div class="col-md-4">
         <div class="form-group">
@@ -229,6 +252,43 @@
     $('#allow_login').on('ifUnchecked', function(event){
       $('div.user_auth_fields').addClass('hide');
     });
+
+    // Pre-create toggle (super admin only): when the "pre_create"
+    // checkbox is on, the new user is being set up for a future
+    // business. The user will be saved with business_id = NULL and
+    // allow_login = 0 server-side (see ManageUserController::createPreCreatedUser),
+    // so the user cannot sign in until they are attached to a business.
+    //
+    // The super admin can still pick a role — the role NAME is
+    // stored on the user (users.pre_create_role). When the user is
+    // later attached to a new business during business creation,
+    // the system resolves the role with the same name in the new
+    // business and assigns it. So the role's features carry over
+    // to the new business.
+    //
+    // Location permissions still don't apply to a user with no
+    // business, so we hide that block and the sales widget.
+    function togglePreCreate() {
+      if ($('#pre_create').is(':checked')) {
+        // Hide the location-permissions block and the sales widget
+        // (they only make sense once a business exists).
+        $('.user-business-only-fields').hide();
+        $('.user-business-fields').hide();
+        // Re-enable the role selector so the super admin can
+        // pick a role to carry over. The server stores only the
+        // role NAME (the #<business_id> suffix is stripped).
+        $('#role').prop('disabled', false);
+        $('#role_precreate_note').show();
+      } else {
+        $('.user-business-only-fields').show();
+        $('.user-business-fields').show();
+        $('#role').prop('disabled', false);
+        $('#role_precreate_note').hide();
+      }
+    }
+    $('#pre_create').on('ifChecked', togglePreCreate);
+    $('#pre_create').on('ifUnchecked', togglePreCreate);
+    togglePreCreate();
 
     $('#user_allowed_contacts').select2({
         ajax: {

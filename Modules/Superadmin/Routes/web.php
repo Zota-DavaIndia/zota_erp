@@ -45,6 +45,10 @@ Route::middleware('web', 'SetSessionData', 'auth', 'language', 'AdminSidebarMenu
     Route::get('/business/{business_id}/manage-suppliers', [Modules\Superadmin\Http\Controllers\BusinessController::class, 'manageSuppliers'])->name('business.manage-suppliers');
     Route::post('/business/{business_id}/sync-suppliers', [Modules\Superadmin\Http\Controllers\BusinessController::class, 'syncSuppliers'])->name('business.sync-suppliers');
 
+    // Universal (chain-wide) customer management
+    Route::get('/customers', [Modules\Superadmin\Http\Controllers\SuperadminCustomerController::class, 'index'])->name('customers.index');
+    Route::get('/customers/{id}/toggle-global/{global}', [Modules\Superadmin\Http\Controllers\SuperadminCustomerController::class, 'toggleGlobal'])->name('customers.toggle-global');
+
 });
 
 Route::middleware('web', 'SetSessionData', 'auth', 'language', 'timezone', 'AdminSidebarMenu')->group(function () {

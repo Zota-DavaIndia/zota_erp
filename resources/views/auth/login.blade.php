@@ -39,6 +39,12 @@
         </div>
     @endif
 
+    @if (session('status'))
+        <div class="dava-alert {{ session('status.success') == 0 ? 'error' : 'success' }}">
+            {{ session('status.msg') }}
+        </div>
+    @endif
+
     <form method="POST" action="{{ route('login') }}" id="login-form">
         {{ csrf_field() }}
 

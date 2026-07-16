@@ -26,6 +26,119 @@
                  </div>
             @endslot
         @endcan
+        {{-- Status tabs. The current tab is read on the client and
+             passed back to the server as a `status` query string so
+             the DataTables AJAX endpoint can filter the union query
+             accordingly. Each tab shows an icon, the label and a
+             count badge. The active tab uses the Dava India brand
+             green. --}}
+        @php
+            $current_status = request()->query('status', 'all');
+            $tabs = [
+                'all' => [
+                    'icon'  => 'fa-users',
+                    'label' => __('superadmin::lang.all_users'),
+                    'count' => $count_all ?? 0,
+                    'class' => 'users-tab--all',
+                ],
+                'precreated' => [
+                    'icon'  => 'fa-user-clock',
+                    'label' => __('superadmin::lang.precreated'),
+                    'count' => $count_precreated ?? 0,
+                    'class' => 'users-tab--precreated',
+                ],
+                'assigned' => [
+                    'icon'  => 'fa-user-check',
+                    'label' => __('superadmin::lang.assigned'),
+                    'count' => $count_assigned ?? 0,
+                    'class' => 'users-tab--assigned',
+                ],
+            ];
+        @endphp
+        <style>
+            /* Dava India brand-styled status tabs on the /users
+               page. Primary green (#1F7A4D) for the active tab and
+               secondary orange (#F26A21) for the pre-created count
+               badge, mirroring the dashboard palette. */
+            #users_status_tabs {
+                border-bottom: 1px solid #e5e7eb;
+                margin-bottom: 18px;
+            }
+            #users_status_tabs > li > a {
+                position: relative;
+                color: #4b5563;
+                font-weight: 600;
+                padding: 10px 18px 10px 14px;
+                border: 1px solid transparent;
+                border-radius: 8px 8px 0 0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                transition: all 0.15s ease;
+            }
+            #users_status_tabs > li > a:hover {
+                background: #f3f4f6;
+                color: #1f2937;
+                border-color: transparent;
+            }
+            #users_status_tabs > li > a i {
+                font-size: 15px;
+                opacity: 0.8;
+            }
+            #users_status_tabs > li > a .users-tab__count {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 26px;
+                height: 22px;
+                padding: 0 8px;
+                border-radius: 999px;
+                background: #e5e7eb;
+                color: #374151;
+                font-size: 12px;
+                font-weight: 700;
+                line-height: 1;
+            }
+            #users_status_tabs > li > a.active {
+                color: #ffffff;
+                background: #1F7A4D;
+                border-color: #1F7A4D;
+            }
+            #users_status_tabs > li > a.active i {
+                opacity: 1;
+            }
+            #users_status_tabs > li > a.active .users-tab__count {
+                background: #ffffff;
+                color: #1F7A4D;
+            }
+            #users_status_tabs > li > a.users-tab--precreated.active {
+                background: #F26A21;
+                border-color: #F26A21;
+            }
+            #users_status_tabs > li > a.users-tab--precreated.active .users-tab__count {
+                color: #F26A21;
+            }
+            #users_status_tabs > li > a.users-tab--precreated .users-tab__count {
+                background: #FDE6D6;
+                color: #B14610;
+            }
+            #users_status_tabs > li > a.users-tab--assigned .users-tab__count {
+                background: #D7EFE3;
+                color: #115C39;
+            }
+        </style>
+        <ul class="nav nav-tabs tw-mb-3" id="users_status_tabs" role="tablist">
+            @foreach ($tabs as $key => $tab)
+                <li class="nav-item">
+                    <a class="nav-link users-tab__btn {{ $tab['class'] }} {{ $current_status === $key ? 'active' : '' }}"
+                       href="{{ request()->fullUrlWithQuery(['status' => $key]) }}">
+                        <i class="fa {{ $tab['icon'] }}"></i>
+                        <span>{{ $tab['label'] }}</span>
+                        <span class="users-tab__count">{{ $tab['count'] }}</span>
+                    </a>
+                </li>
+            @endforeach
+        </ul>
         @can('user.view')
             <div class="table-responsive">
                 <table class="table table-bordered table-striped" id="users_table">
@@ -34,6 +147,7 @@
                             <th>@lang( 'business.username' )</th>
                             <th>@lang( 'user.name' )</th>
                             <th>@lang( 'user.role' )</th>
+                            <th>@lang( 'business.business' )</th>
                             <th>@lang( 'business.email' )</th>
                             <th class="not-export">@lang( 'messages.action' )</th>
                         </tr>
@@ -54,13 +168,27 @@
 <script type="text/javascript">
     //Roles table
     $(document).ready( function(){
+        // Read the active tab from the URL so DataTables can
+        // forward it to the AJAX endpoint and refresh the listing
+        // when the user clicks a different tab.
+        function getActiveStatus() {
+            var params = new URLSearchParams(window.location.search);
+            var s = params.get('status');
+            return s && s.length ? s : 'all';
+        }
+
         var users_table = $('#users_table').DataTable({
                     processing: true,
                     serverSide: true,
                     fixedHeader:false,
-                    ajax: '/users',
+                    ajax: {
+                        url: '/users',
+                        data: function (d) {
+                            d.status = getActiveStatus();
+                        }
+                    },
                     columnDefs: [ {
-                        "targets": [4],
+                        "targets": [5],
                         "orderable": false,
                         "searchable": false
                     } ],
@@ -68,6 +196,7 @@
                         {"data":"username"},
                         {"data":"full_name"},
                         {"data":"role"},
+                        {"data":"business_name"},
                         {"data":"email"},
                         {"data":"action"}
                     ]

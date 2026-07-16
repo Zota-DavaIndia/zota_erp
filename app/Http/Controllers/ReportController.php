@@ -196,7 +196,10 @@ class ReportController extends Controller
 
         //Return the details in ajax call
         if ($request->ajax()) {
-            $contacts = Contact::where('contacts.business_id', $business_id)
+            $contacts = Contact::where(function ($q) use ($business_id) {
+                                $q->where('contacts.business_id', $business_id)
+                                  ->orWhere('contacts.is_global', 1);
+                            })
                 ->join('transactions AS t', 'contacts.id', '=', 't.contact_id')
                 ->active()
                 ->groupBy('contacts.id')

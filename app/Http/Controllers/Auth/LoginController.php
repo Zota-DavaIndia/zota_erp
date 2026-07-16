@@ -87,6 +87,19 @@ class LoginController extends Controller
      */
     protected function authenticated(Request $request, $user)
     {
+        // A pre-created (unassigned) user has business_id = NULL and
+        // cannot log in until the super admin attaches them to a
+        // business at business-creation time. Block them here BEFORE
+        // any other side effects (like activity log) that need the
+        // business to exist.
+        if (empty($user->business_id)) {
+            \Auth::logout();
+
+            return redirect('/login')
+              ->withErrors(['username' => __('lang_v1.user_not_assigned_to_business')])
+              ->with('status', ['success' => 0, 'msg' => __('lang_v1.user_not_assigned_to_business')]);
+        }
+
         $this->businessUtil->activityLog($user, 'login', null, [], false, $user->business_id);
 
         if (! $user->business->is_active) {

@@ -301,7 +301,7 @@
     </div>
 </div>
 <div class="clearfix"></div>
-<div class="col-md-6">
+<div class="col-md-6 password-new-only">
     <div class="form-group">
         {!! Form::label('password', __('business.password') . ':*') !!}
         <div class="input-group">
@@ -313,7 +313,7 @@
     </div>
 </div>
 
-<div class="col-md-6">
+<div class="col-md-6 password-new-only">
     <div class="form-group">
         {!! Form::label('confirm_password', __('business.confirm_password') . ':*') !!}
         <div class="input-group">
@@ -321,6 +321,15 @@
                 <i class="fa fa-lock"></i>
             </span>
             {!! Form::password('confirm_password', ['class' => 'form-control','placeholder' => __('business.confirm_password'), 'required']); !!}
+        </div>
+    </div>
+</div>
+<div class="col-md-12 password-existing-only" style="display:none;">
+    <div class="form-group">
+        <div class="alert alert-warning" style="padding: 6px 10px; margin-bottom: 0;">
+            <i class="fa fa-lock"></i>
+            @lang('business.password') &amp; @lang('business.confirm_password'):
+            <strong>@lang('superadmin::lang.keeping_existing_password')</strong>
         </div>
     </div>
 </div>

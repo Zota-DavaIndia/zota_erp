@@ -273,6 +273,21 @@ class BusinessController extends BaseController
                 return [$c->id => $label];
             });
 
+        // Pre-created (unassigned) users available to be picked as
+        // the owner of the new business. We need the full record so the
+        // "Owner information" block can be auto-populated from the
+        // selected user (surname, first_name, last_name, username, email).
+        $precreated_users = User::whereNull('business_id')
+            ->where('user_type', 'user')
+            ->where('allow_login', 0)
+            ->orderBy('id')
+            ->select('id', 'surname', 'first_name', 'last_name', 'username', 'email')
+            ->get();
+        $precreated_users_options = $precreated_users->mapWithKeys(function ($u) {
+            $label = trim(($u->surname ?? '').' '.($u->first_name ?? '').' '.($u->last_name ?? '').' ('.$u->username.')');
+            return [$u->id => $label];
+        });
+
         return view('superadmin::business.create')
             ->with(compact(
                 'currencies',
@@ -282,7 +297,9 @@ class BusinessController extends BaseController
                 'is_admin',
                 'packages',
                 'gateways',
-                'common_suppliers'
+                'common_suppliers',
+                'precreated_users',
+                'precreated_users_options'
             ));
     }
 
@@ -301,11 +318,24 @@ class BusinessController extends BaseController
         try {
             DB::beginTransaction();
 
-            //Create owner.
-            $owner_details = $request->only(['surname', 'first_name', 'last_name', 'username', 'email', 'password']);
-            $owner_details['language'] = env('APP_LOCALE');
+            $owner_source = $request->input('owner_source', 'new');
+            $precreated_user_id = $request->input('precreated_user_id');
+            $is_assigning_existing = $owner_source === 'existing' && ! empty($precreated_user_id);
 
-            $user = User::create_user($owner_details);
+            if ($is_assigning_existing) {
+                // Use a pre-created user. Validate they are still
+                // unassigned before consuming the request.
+                $user = User::whereNull('business_id')
+                    ->where('user_type', 'user')
+                    ->where('allow_login', 0)
+                    ->findOrFail($precreated_user_id);
+            } else {
+                // Create owner.
+                $owner_details = $request->only(['surname', 'first_name', 'last_name', 'username', 'email', 'password']);
+                $owner_details['language'] = env('APP_LOCALE');
+
+                $user = User::create_user($owner_details);
+            }
 
             $business_details = $request->only(['name', 'start_date', 'currency_id', 'tax_label_1', 'tax_number_1', 'tax_label_2', 'tax_number_2', 'time_zone', 'accounting_method', 'fy_start_month']);
 
@@ -331,8 +361,10 @@ class BusinessController extends BaseController
 
             $business = $this->businessUtil->createNewBusiness($business_details);
 
-            //Update user with business id
+            //Update user with business id and enable login
             $user->business_id = $business->id;
+            $user->allow_login = 1;
+            $user->status = 'active';
             $user->save();
 
             $this->businessUtil->newBusinessDefaultResources($business->id, $user->id);
@@ -340,6 +372,53 @@ class BusinessController extends BaseController
 
             //create new permission with the new location
             Permission::create(['name' => 'location.'.$new_location->id]);
+
+            // If the user was pre-created with a role name, apply
+            // that role (resolved in the new business) INSTEAD of the
+            // default Admin#<business_id>. This carries the role
+            // features over to the new business.
+            if ($is_assigning_existing && ! empty($user->pre_create_role)) {
+                $role_in_new_business = \Spatie\Permission\Models\Role::where(
+                    'name',
+                    $user->pre_create_role . '#' . $business->id
+                )->first();
+
+                // Defensive fallback: if the new business does
+                // not have this role yet (e.g. it was created
+                // before role cloning was added) create it now
+                // by cloning from the super admin's business so
+                // the pre_create_role promise is honoured. The
+                // clone is permission-faithful: every permission
+                // attached to the template role is also attached
+                // to the new role.
+                if (! $role_in_new_business) {
+                    $role_in_new_business = $this->moduleUtil->cloneRoleFromTemplateByName(
+                        $business->id,
+                        $user->pre_create_role
+                    );
+                }
+
+                if ($role_in_new_business) {
+                    // Detach Admin#<business_id> and attach the
+                    // selected role instead. If the selected role
+                    // is the same as Admin, no-op.
+                    $admin_role = \Spatie\Permission\Models\Role::where(
+                        'name',
+                        'Admin#' . $business->id
+                    )->first();
+
+                    if ($admin_role && $admin_role->id !== $role_in_new_business->id) {
+                        $user->removeRole($admin_role->name);
+                    }
+
+                    $user->assignRole($role_in_new_business->name);
+
+                    // Clear the pre_create_role marker so the
+                    // assignment is one-time only.
+                    $user->pre_create_role = null;
+                    $user->save();
+                }
+            }
 
             $subscription_details = $request->only(['package_id', 'paid_via', 'payment_transaction_id']);
 
@@ -387,7 +466,9 @@ class BusinessController extends BaseController
             }
 
             $output = ['success' => 1,
-                'msg' => __('business.business_created_succesfully'),
+                'msg' => $is_assigning_existing
+                    ? __('superadmin::lang.user_assigned_to_business')
+                    : __('business.business_created_succesfully'),
             ];
 
             return redirect()

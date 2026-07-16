@@ -42,6 +42,33 @@ class Contact extends Authenticatable
     }
 
     /**
+     * Restrict a contact query to the given business OR contacts
+     * that have been marked as chain-wide (is_global = 1).
+     *
+     * Used for customer-scoped queries so that any business can
+     * list, search and operate on global customers created by
+     * any other business in the chain.
+     */
+    public function scopeVisibleForBusiness($query, $business_id)
+    {
+        return $query->where(function ($q) use ($business_id) {
+            $q->where('contacts.business_id', $business_id)
+              ->orWhere('contacts.is_global', 1);
+        });
+    }
+
+    /**
+     * Restrict the query to "master" customer records: those that
+     * are not a clone of another customer. Combined with the
+     * universal customer flag, this is what gives every store a
+     * single, deduplicated view of the customer list.
+     */
+    public function scopeMasterCustomers($query)
+    {
+        return $query->whereNull('master_contact_id');
+    }
+
+    /**
      * Filters only own created suppliers or has access to the supplier
      */
     public function scopeOnlySuppliers($query)
@@ -121,7 +148,16 @@ class Contact extends Authenticatable
      */
     public static function contactDropdown($business_id, $exclude_default = false, $prepend_none = true, $append_id = true)
     {
-        $query = Contact::where('business_id', $business_id)
+        // Customers are universal across all businesses; only suppliers
+        // (and leads) remain scoped to the current business. Master
+        // records only are shown to avoid duplicates.
+        $query = Contact::where(function ($q) use ($business_id) {
+                        $q->where(function ($q2) {
+                                $q2->whereIn('type', ['customer', 'both'])
+                                   ->whereNull('master_contact_id');
+                            })
+                          ->orWhere('business_id', $business_id);
+                    })
                     ->where('type', '!=', 'lead')
                     ->active();
 
@@ -208,8 +244,12 @@ class Contact extends Authenticatable
      */
     public static function customersDropdown($business_id, $prepend_none = true, $append_id = true)
     {
-        $all_contacts = Contact::where('contacts.business_id', $business_id)
-                        ->whereIn('contacts.type', ['customer', 'both'])
+        // Customers are universal: every customer in the system is
+        // available to every business. Only master customer records
+        // (those without a `master_contact_id` link) are shown so
+        // the same customer is not displayed multiple times.
+        $all_contacts = Contact::whereIn('contacts.type', ['customer', 'both'])
+                        ->masterCustomers()
                         ->active();
 
         if ($append_id) {

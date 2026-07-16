@@ -631,6 +631,22 @@ class ContactController extends Controller
             $input['credit_limit'] = $request->input('credit_limit') != '' ? $this->commonUtil->num_uf($request->input('credit_limit')) : null;
             $input['opening_balance'] = $this->commonUtil->num_uf($request->input('opening_balance'));
 
+            // Customers are universal by default: any store can add a
+            // customer and it immediately becomes available to every
+            // other store. The is_global checkbox (when present) still
+            // allows the user to opt out.
+            if (in_array($input['type'], ['customer', 'both'])) {
+                $input['is_global'] = $request->has('is_global')
+                    ? (! empty($request->input('is_global')) ? 1 : 0)
+                    : 1;
+            } else {
+                $input['is_global'] = 0;
+            }
+
+            if (! empty($input['is_global'])) {
+                $input['source_business_id'] = $business_id;
+            }
+
             DB::beginTransaction();
             $output = $this->contactUtil->createNewContact($input);
 
@@ -722,7 +738,10 @@ class ContactController extends Controller
 
         if (request()->ajax()) {
             $business_id = request()->session()->get('user.business_id');
-            $contact = Contact::where('business_id', $business_id)->find($id);
+            // Customers are universal, so any contact visible to the
+            // business can be shown.
+            $contact = Contact::where('id', $id)
+                        ->first();
 
             if (! $this->moduleUtil->isSubscribed($business_id)) {
                 return $this->moduleUtil->expiredResponse();
@@ -780,7 +799,7 @@ class ContactController extends Controller
         if (request()->ajax()) {
             try {
                 $input = $request->only(['type', 'supplier_business_name', 'prefix', 'first_name', 'middle_name', 'last_name', 'tax_number', 'pay_term_number', 'pay_term_type', 'mobile', 'address_line_1', 'address_line_2', 'zip_code', 'dob', 'alternate_number', 'city', 'state', 'country', 'landline', 'customer_group_id', 'contact_id', 'custom_field1', 'custom_field2', 'custom_field3', 'custom_field4', 'custom_field5', 'custom_field6', 'custom_field7', 'custom_field8', 'custom_field9', 'custom_field10', 'email', 'shipping_address', 'position', 'shipping_custom_field_details', 'export_custom_field_1', 'export_custom_field_2', 'export_custom_field_3', 'export_custom_field_4', 'export_custom_field_5',
-                    'export_custom_field_6', 'assigned_to_users', 'land_mark', 'street_name', 'building_number', 'additional_number']);
+                    'export_custom_field_6', 'assigned_to_users', 'land_mark', 'street_name', 'building_number', 'additional_number', 'is_global']);
 
                 $name_array = [];
 
@@ -823,6 +842,17 @@ class ContactController extends Controller
                     return $this->moduleUtil->expiredResponse();
                 }
 
+                // Capture global flag. Customers are universal by default;
+                // only an explicit 0 keeps the customer store-specific.
+                $type = $request->input('type', 'customer');
+                if (in_array($type, ['customer', 'both'])) {
+                    $input['is_global'] = $request->has('is_global')
+                        ? (! empty($request->input('is_global')) ? 1 : 0)
+                        : 1;
+                } else {
+                    $input['is_global'] = 0;
+                }
+
                 $output = $this->contactUtil->updateContact($input, $id, $business_id);
 
                 event(new ContactCreatedOrModified($output['data'], 'updated'));
@@ -861,8 +891,21 @@ class ContactController extends Controller
                                     ->where('contact_id', $id)
                                     ->count();
                 if ($count == 0) {
-                    $contact = Contact::where('business_id', $business_id)->findOrFail($id);
+                    // Customers are universal, so a delete request is
+                    // allowed from any business.
+                    $contact = Contact::findOrFail($id);
                     if (! $contact->is_default) {
+                        // Chain-wide (global) customers can only be deleted by
+                        // the superadmin from the superadmin panel, not from a
+                        // single store.
+                        if ($contact->is_global) {
+                            $output = ['success' => false,
+                                'msg' => __('lang_v1.global_customer_cannot_delete'),
+                            ];
+
+                            return $output;
+                        }
+
                         $log_properities = [
                             'id' => $contact->id,
                             'name' => $contact->name,
@@ -912,7 +955,11 @@ class ContactController extends Controller
             $business_id = request()->session()->get('user.business_id');
             $user_id = request()->session()->get('user.id');
 
-            $contacts = Contact::where('contacts.business_id', $business_id)
+            // Customers are universal: every customer in the system
+            // is searchable from any business. Only master customer
+            // records are returned to keep the list deduplicated.
+            $contacts = Contact::whereIn('contacts.type', ['customer', 'both'])
+                            ->whereNull('contacts.master_contact_id')
                             ->leftjoin('customer_groups as cg', 'cg.id', '=', 'contacts.customer_group_id')
                             ->active();
 
@@ -1673,8 +1720,13 @@ class ContactController extends Controller
 
         $mobile_number = $request->input('mobile_number');
 
-        $query = Contact::where('business_id', $business_id)
-                        ->where('mobile', 'like', "%{$mobile_number}");
+        // For chain-wide uniqueness, check across all businesses so
+        // that the same mobile is not duplicated as a global customer
+        // by multiple stores.
+        $query = Contact::where(function ($q) use ($mobile_number) {
+                        $q->where('mobile', 'like', "%{$mobile_number}")
+                          ->orWhere('alternate_number', 'like', "%{$mobile_number}");
+                    });
 
         if (! empty($request->input('contact_id'))) {
             $query->where('id', '!=', $request->input('contact_id'));
@@ -1699,9 +1751,11 @@ class ContactController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $tax_number = $request->input('tax_number');
 
-
-        $query = Contact::where('business_id', $business_id)
-                        ->where('tax_number', $tax_number);
+        // Tax number must be unique across the chain to prevent the
+        // same tax id being registered by multiple stores.
+        $query = Contact::where('tax_number', $tax_number)
+                        ->whereNotNull('tax_number')
+                        ->where('tax_number', '!=', '');
 
         if (! empty($request->input('contact_id'))) {
             $query->where('id', '!=', $request->input('contact_id'));
