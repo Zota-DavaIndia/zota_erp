@@ -126,28 +126,60 @@ class UnitController extends Controller
             $input['business_id'] = $request->session()->get('user.business_id');
             $input['created_by'] = $request->session()->get('user.id');
 
+            // Default: no base unit relationship and no intermediate.
+            $input['base_unit_id'] = null;
+            $input['base_unit_multiplier'] = null;
+            $input['intermediate_unit_id'] = null;
+
             if ($request->has('define_base_unit')) {
-                if (! empty($request->input('base_unit_id')) && ! empty($request->input('base_unit_multiplier'))) {
-                    $base_unit_multiplier = $this->commonUtil->num_uf($request->input('base_unit_multiplier'));
+                $use_intermediate = $request->boolean('define_via_intermediate')
+                    && ! empty($request->input('intermediate_unit_id'));
 
-                    // If defining via intermediate unit, calculate actual base multiplier
-                    if ($request->input('define_via_intermediate') && ! empty($request->input('intermediate_unit_id'))) {
-                        $intermediate_unit = Unit::where('business_id', $input['business_id'])
-                            ->whereNotNull('base_unit_id')
-                            ->find($request->input('intermediate_unit_id'));
+                if ($use_intermediate) {
+                    // The user typed a ratio in `intermediate_multiplier`
+                    // (e.g. "10" meaning 1 Baby Box = 10 Strips). The JS
+                    // auto-fills `base_unit_multiplier` for the live preview
+                    // but that value is the FINAL base multiplier; the
+                    // server must read the user-typed ratio and multiply by
+                    // the intermediate's own base_unit_multiplier — NOT
+                    // re-multiply the already-computed preview value.
+                    $intermediate_multiplier = $this->commonUtil->num_uf(
+                        $request->input('intermediate_multiplier')
+                    );
 
-                        if ($intermediate_unit) {
-                            // e.g., 1 Baby Box = 10 Strips, 1 Strip = 10 Tablets
-                            // base_unit_multiplier = 10 * 10 = 100 (in Tablets)
-                            $base_unit_multiplier = $base_unit_multiplier * $intermediate_unit->base_unit_multiplier;
-                            $input['base_unit_id'] = $intermediate_unit->base_unit_id;
+                    $intermediate_unit = Unit::where('business_id', $input['business_id'])
+                        ->whereNotNull('base_unit_id')
+                        ->find($request->input('intermediate_unit_id'));
+
+                    if ($intermediate_unit && $intermediate_multiplier > 0) {
+                        // Prevent cycles: the intermediate must not be the
+                        // current unit (only relevant on update, but cheap
+                        // to guard here too).
+                        $base_unit_multiplier = $intermediate_multiplier
+                            * (float) $intermediate_unit->base_unit_multiplier;
+                        $input['base_unit_id'] = $intermediate_unit->base_unit_id;
+                        $input['intermediate_unit_id'] = $intermediate_unit->id;
+                    } else {
+                        // Fall back to the direct form values if the
+                        // intermediate could not be resolved.
+                        $base_unit_multiplier = $this->commonUtil->num_uf(
+                            $request->input('base_unit_multiplier')
+                        );
+                        if (! empty($request->input('base_unit_id'))) {
+                            $input['base_unit_id'] = $request->input('base_unit_id');
                         }
                     }
-
-                    if ($base_unit_multiplier != 0) {
-                        $input['base_unit_id'] = $input['base_unit_id'] ?? $request->input('base_unit_id');
-                        $input['base_unit_multiplier'] = $base_unit_multiplier;
+                } else {
+                    $base_unit_multiplier = $this->commonUtil->num_uf(
+                        $request->input('base_unit_multiplier')
+                    );
+                    if (! empty($request->input('base_unit_id'))) {
+                        $input['base_unit_id'] = $request->input('base_unit_id');
                     }
+                }
+
+                if (! empty($base_unit_multiplier) && $base_unit_multiplier != 0) {
+                    $input['base_unit_multiplier'] = $base_unit_multiplier;
                 }
             }
 
@@ -231,31 +263,56 @@ class UnitController extends Controller
                 $unit->actual_name = $input['actual_name'];
                 $unit->short_name = $input['short_name'];
                 $unit->allow_decimal = $input['allow_decimal'];
+
                 if ($request->has('define_base_unit')) {
-                    if (! empty($request->input('base_unit_id')) && ! empty($request->input('base_unit_multiplier'))) {
-                        $base_unit_multiplier = $this->commonUtil->num_uf($request->input('base_unit_multiplier'));
-                        $resolved_base_unit_id = $request->input('base_unit_id');
+                    $use_intermediate = $request->boolean('define_via_intermediate')
+                        && ! empty($request->input('intermediate_unit_id'));
 
-                        // If defining via intermediate unit, calculate actual base multiplier
-                        if ($request->input('define_via_intermediate') && ! empty($request->input('intermediate_unit_id'))) {
-                            $intermediate_unit = Unit::where('business_id', $business_id)
-                                ->whereNotNull('base_unit_id')
-                                ->find($request->input('intermediate_unit_id'));
+                    if ($use_intermediate) {
+                        // Read the user-typed ratio in `intermediate_multiplier`
+                        // — NOT the JS-auto-filled `base_unit_multiplier`,
+                        // which is already the final base value (would
+                        // double-count).
+                        $intermediate_multiplier = $this->commonUtil->num_uf(
+                            $request->input('intermediate_multiplier')
+                        );
 
-                            if ($intermediate_unit) {
-                                $base_unit_multiplier = $base_unit_multiplier * $intermediate_unit->base_unit_multiplier;
-                                $resolved_base_unit_id = $intermediate_unit->base_unit_id;
-                            }
+                        $intermediate_unit = Unit::where('business_id', $business_id)
+                            ->whereNotNull('base_unit_id')
+                            ->where('id', '!=', $id) // never self-reference
+                            ->find($request->input('intermediate_unit_id'));
+
+                        if ($intermediate_unit && $intermediate_multiplier > 0) {
+                            $base_unit_multiplier = $intermediate_multiplier
+                                * (float) $intermediate_unit->base_unit_multiplier;
+                            $unit->base_unit_id = $intermediate_unit->base_unit_id;
+                            $unit->intermediate_unit_id = $intermediate_unit->id;
+                        } else {
+                            $base_unit_multiplier = $this->commonUtil->num_uf(
+                                $request->input('base_unit_multiplier')
+                            );
+                            $unit->base_unit_id = $request->input('base_unit_id') ?: null;
+                            $unit->intermediate_unit_id = null;
                         }
+                    } else {
+                        $base_unit_multiplier = $this->commonUtil->num_uf(
+                            $request->input('base_unit_multiplier')
+                        );
+                        $unit->base_unit_id = $request->input('base_unit_id') ?: null;
+                        $unit->intermediate_unit_id = null;
+                    }
 
-                        if ($base_unit_multiplier != 0) {
-                            $unit->base_unit_id = $resolved_base_unit_id;
-                            $unit->base_unit_multiplier = $base_unit_multiplier;
-                        }
+                    if (! empty($base_unit_multiplier) && $base_unit_multiplier != 0) {
+                        $unit->base_unit_multiplier = $base_unit_multiplier;
+                    } else {
+                        $unit->base_unit_multiplier = null;
                     }
                 } else {
+                    // The user unchecked "Add as multiple of other unit".
+                    // Clear all base relationships.
                     $unit->base_unit_id = null;
                     $unit->base_unit_multiplier = null;
+                    $unit->intermediate_unit_id = null;
                 }
 
                 $unit->save();

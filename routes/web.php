@@ -130,7 +130,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
     Route::resource('brands', BrandController::class);
 
-    Route::resource('payment-account', 'PaymentAccountController');
+    // Route::resource('payment-account', 'PaymentAccountController'); // Controller removed
 
     Route::resource('tax-rates', TaxRateController::class);
 
@@ -515,10 +515,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 // });
 
 //common route
-Route::middleware(['auth'])->group(function () {
-    Route::get('/logout', [App\Http\Controllers\Auth\LoginController::class, 'logout'])->name('logout');
-});
-
+// Logout is provided by Auth::routes() above; do not redeclare.
 Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone'])->group(function () {
     Route::get('/load-more-notifications', [HomeController::class, 'loadMoreNotifications']);
     Route::get('/get-total-unread', [HomeController::class, 'getTotalUnreadNotifications']);

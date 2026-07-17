@@ -3,39 +3,39 @@
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:api', 'timezone')->prefix('connector/api')->group(function () {
-    Route::resource('business-location', Modules\Connector\Http\Controllers\Api\BusinessLocationController::class)->only('index', 'show');
+    Route::resource('business-location', Modules\Connector\Http\Controllers\Api\BusinessLocationController::class)->only('index', 'show')->names('connector.business-location');
 
-    Route::resource('contactapi', Modules\Connector\Http\Controllers\Api\ContactController::class)->only('index', 'show', 'store', 'update');
+    Route::resource('contactapi', Modules\Connector\Http\Controllers\Api\ContactController::class)->only('index', 'show', 'store', 'update')->names('connector.contactapi');
 
     Route::post('contactapi-payment', [Modules\Connector\Http\Controllers\Api\ContactController::class, 'contactPay']);
 
-    Route::resource('unit', Modules\Connector\Http\Controllers\Api\UnitController::class)->only('index', 'show');
+    Route::resource('unit', Modules\Connector\Http\Controllers\Api\UnitController::class)->only('index', 'show')->names('connector.unit');
 
-    Route::resource('taxonomy', 'Modules\Connector\Http\Controllers\Api\CategoryController')->only('index', 'show');
+    Route::resource('taxonomy', 'Modules\Connector\Http\Controllers\Api\CategoryController')->only('index', 'show')->names('connector.taxonomy');
 
-    Route::resource('brand', Modules\Connector\Http\Controllers\Api\BrandController::class)->only('index', 'show');
+    Route::resource('brand', Modules\Connector\Http\Controllers\Api\BrandController::class)->only('index', 'show')->names('connector.brand');
 
-    Route::resource('product', Modules\Connector\Http\Controllers\Api\ProductController::class)->only('index', 'show');
+    Route::resource('product', Modules\Connector\Http\Controllers\Api\ProductController::class)->only('index', 'show')->names('connector.product');
 
     Route::get('selling-price-group', [Modules\Connector\Http\Controllers\Api\ProductController::class, 'getSellingPriceGroup']);
 
     Route::get('variation/{id?}', [Modules\Connector\Http\Controllers\Api\ProductController::class, 'listVariations']);
 
-    Route::resource('tax', 'Modules\Connector\Http\Controllers\Api\TaxController')->only('index', 'show');
+    Route::resource('tax', 'Modules\Connector\Http\Controllers\Api\TaxController')->only('index', 'show')->names('connector.tax');
 
-    Route::resource('table', Modules\Connector\Http\Controllers\Api\TableController::class)->only('index', 'show');
+    Route::resource('table', Modules\Connector\Http\Controllers\Api\TableController::class)->only('index', 'show')->names('connector.table');
 
     Route::get('user/loggedin', [Modules\Connector\Http\Controllers\Api\UserController::class, 'loggedin']);
     Route::post('user-registration', [Modules\Connector\Http\Controllers\Api\UserController::class, 'registerUser']);
-    Route::resource('user', Modules\Connector\Http\Controllers\Api\UserController::class)->only('index', 'show');
+    Route::resource('user', Modules\Connector\Http\Controllers\Api\UserController::class)->only('index', 'show')->names('connector.user');
 
-    Route::resource('types-of-service', Modules\Connector\Http\Controllers\Api\TypesOfServiceController::class)->only('index', 'show');
+    Route::resource('types-of-service', Modules\Connector\Http\Controllers\Api\TypesOfServiceController::class)->only('index', 'show')->names('connector.types-of-service');
 
     Route::get('payment-accounts', [Modules\Connector\Http\Controllers\Api\CommonResourceController::class, 'getPaymentAccounts']);
 
     Route::get('payment-methods', [Modules\Connector\Http\Controllers\Api\CommonResourceController::class, 'getPaymentMethods']);
 
-    Route::resource('sell', Modules\Connector\Http\Controllers\Api\SellController::class)->only('index', 'store', 'show', 'update', 'destroy');
+    Route::resource('sell', Modules\Connector\Http\Controllers\Api\SellController::class)->only('index', 'store', 'show', 'update', 'destroy')->names('connector.sell');
 
     Route::post('sell-return', [Modules\Connector\Http\Controllers\Api\SellController::class, 'addSellReturn']);
 
@@ -43,12 +43,12 @@ Route::middleware('auth:api', 'timezone')->prefix('connector/api')->group(functi
 
     Route::post('update-shipping-status', [Modules\Connector\Http\Controllers\Api\SellController::class, 'updateSellShippingStatus']);
 
-    Route::resource('expense', Modules\Connector\Http\Controllers\Api\ExpenseController::class)->only('index', 'store', 'show', 'update');
+    Route::resource('expense', Modules\Connector\Http\Controllers\Api\ExpenseController::class)->only('index', 'store', 'show', 'update')->names('connector.expense');
     Route::get('expense-refund', [Modules\Connector\Http\Controllers\Api\ExpenseController::class, 'listExpenseRefund']);
 
     Route::get('expense-categories', [Modules\Connector\Http\Controllers\Api\ExpenseController::class, 'listExpenseCategories']);
 
-    Route::resource('cash-register', Modules\Connector\Http\Controllers\Api\CashRegisterController::class)->only('index', 'store', 'show', 'update');
+    Route::resource('cash-register', Modules\Connector\Http\Controllers\Api\CashRegisterController::class)->only('index', 'store', 'show', 'update')->names('connector.cash-register');
 
     Route::get('business-details', [Modules\Connector\Http\Controllers\Api\CommonResourceController::class, 'getBusinessDetails']);
 
@@ -74,7 +74,7 @@ Route::middleware('auth:api', 'timezone')->prefix('connector/api')->group(functi
 });
 
 Route::middleware('auth:api', 'timezone')->prefix('connector/api/crm')->group(function () {
-    Route::resource('follow-ups', 'Modules\Connector\Http\Controllers\Api\Crm\FollowUpController')->only('index', 'store', 'show', 'update');
+    Route::resource('follow-ups', 'Modules\Connector\Http\Controllers\Api\Crm\FollowUpController')->only('index', 'store', 'show', 'update')->names('connector.follow-ups');
 
     Route::get('follow-up-resources', [Modules\Connector\Http\Controllers\Api\Crm\FollowUpController::class, 'getFollowUpResources']);
 

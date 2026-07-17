@@ -131,7 +131,7 @@
                         success: function (result) {
                             if (result.success) {
                                 toastr.success(result.msg || '@lang("composition.added_success")');
-                                window.location.href = "{{ action([\\App\\Http\\Controllers\\CompositionController::class, 'index']) }}" + '?status=created';
+                                window.location.href = "{!! action([\App\Http\Controllers\CompositionController::class, 'index']) !!}" + '?status=created';
                             } else {
                                 toastr.error(result.msg || '@lang("messages.something_went_wrong")');
                                 $btn.prop('disabled', false).html('@lang("messages.save")');

@@ -265,9 +265,26 @@
 		
 		<input type="hidden" name="products[{{$row_count}}][product_unit_id]" value="{{$product->unit_id}}">
 		@if(count($sub_units) > 1)
+			@php
+				// Pre-select the per-product default sell sub-unit
+				// (e.g. Strip for a medicine mostly sold in strips).
+				// Falls back to the existing $product->sub_unit_id
+				// when the row is being re-rendered for an already-
+				// in-cart product, and to the first sub-unit as a
+				// last resort.
+				$_preselect_sell = null;
+				if (!empty($product->sub_unit_id) && isset($sub_units[$product->sub_unit_id])) {
+					$_preselect_sell = $product->sub_unit_id;
+				} elseif (!empty($product->default_sell_sub_unit_id) && isset($sub_units[$product->default_sell_sub_unit_id])) {
+					$_preselect_sell = $product->default_sell_sub_unit_id;
+				} else {
+					$_first = array_key_first($sub_units);
+					$_preselect_sell = ($_first !== null) ? $_first : null;
+				}
+			@endphp
 			<select name="products[{{$row_count}}][sub_unit_id]" class="form-control input-sm sub_unit">
                 @foreach($sub_units as $key => $value)
-                    <option value="{{$key}}" data-multiplier="{{$value['multiplier']}}" data-unit_name="{{$value['name']}}" data-allow_decimal="{{$value['allow_decimal']}}" @if(!empty($product->sub_unit_id) && $product->sub_unit_id == $key) selected @endif>
+                    <option value="{{$key}}" data-multiplier="{{$value['multiplier']}}" data-unit_name="{{$value['name']}}" data-allow_decimal="{{$value['allow_decimal']}}" @if($_preselect_sell == $key) selected @endif>
                         {{$value['name']}}
                     </option>
                 @endforeach

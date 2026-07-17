@@ -1991,12 +1991,25 @@ $(document).ready(function() {
             form.find('#calculated_base_multiplier_info').hide();
             form.find('#intermediate_multiplier').val('');
             form.find('#intermediate_unit_id').val('');
+            // Clear the previously auto-filled base_unit_multiplier and
+            // base_unit_id so the user is not silently submitting a
+            // stale value. The server will recompute when the form
+            // is submitted with a direct base unit chosen.
+            form.find('#base_unit_multiplier').val('');
+            form.find('#base_unit_id_select').val('');
         }
     });
 
-    // Auto-calculate base multiplier from intermediate unit
+    // Auto-calculate base multiplier from intermediate unit.
+    // Only runs when the "Define via intermediate unit" checkbox is
+    // checked — otherwise the intermediate fields must not affect
+    // the direct base unit fields.
     $(document).on('change keyup', '#intermediate_multiplier, #intermediate_unit_id', function() {
         var form = $(this).closest('form');
+        if (! form.find('.toggle_intermediate').is(':checked')) {
+            form.find('#calculated_base_multiplier_info').hide();
+            return;
+        }
         var qty = parseFloat(form.find('#intermediate_multiplier').val()) || 0;
         var selected = form.find('#intermediate_unit_id option:selected');
         var intermediate_multiplier = parseFloat(selected.data('multiplier')) || 0;
@@ -2010,7 +2023,10 @@ $(document).ready(function() {
             // Find base unit name from the base_unit_id select
             var base_unit_name = form.find('#base_unit_id_select option[value="' + base_unit_id + '"]').text();
 
-            // Auto-fill the hidden base unit fields
+            // Auto-fill the base unit fields. The server reads
+            // `intermediate_multiplier` (not `base_unit_multiplier`)
+            // to avoid double-counting; the auto-fill here is purely
+            // a live preview for the user.
             form.find('#base_unit_multiplier').val(total_multiplier);
             form.find('#base_unit_id_select').val(base_unit_id);
 

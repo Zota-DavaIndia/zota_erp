@@ -413,6 +413,18 @@ class BusinessController extends BaseController
 
                     $user->assignRole($role_in_new_business->name);
 
+                    // The Admin#<id> role passes every permission
+                    // check via Gate::before, but any other role
+                    // leaves the new owner without location access:
+                    // permitted_locations() returns an empty array
+                    // and every location-filtered screen (product
+                    // list, sells list, reports) goes blank. Grant
+                    // the owner access to all locations of their
+                    // own business explicitly.
+                    if (! $role_in_new_business->hasPermissionTo('access_all_locations')) {
+                        $user->givePermissionTo('access_all_locations');
+                    }
+
                     // Clear the pre_create_role marker so the
                     // assignment is one-time only.
                     $user->pre_create_role = null;

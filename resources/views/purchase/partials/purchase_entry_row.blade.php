@@ -62,15 +62,31 @@
 
             <input type="hidden" name="purchases[{{$row_count}}][product_unit_id]" value="{{$product->unit->id}}">
             @if(!empty($sub_units))
+                @php
+                    // Pre-select the per-product default purchase sub-unit
+                    // (e.g. Baby Box when the supplier always delivers in
+                    // baby boxes). Falls back to the existing
+                    // $purchase_line->sub_unit_id (for re-opens) and then
+                    // to the first sub-unit in the list.
+                    $_preselect_purchase = null;
+                    if (!empty($purchase_line) && !empty($purchase_line->sub_unit_id) && isset($sub_units[$purchase_line->sub_unit_id])) {
+                        $_preselect_purchase = $purchase_line->sub_unit_id;
+                    } elseif (!empty($product->default_purchase_sub_unit_id) && isset($sub_units[$product->default_purchase_sub_unit_id])) {
+                        $_preselect_purchase = $product->default_purchase_sub_unit_id;
+                    } else {
+                        $_first = array_key_first($sub_units);
+                        $_preselect_purchase = ($_first !== null) ? $_first : null;
+                    }
+                @endphp
                 <br>
                 <select name="purchases[{{$row_count}}][sub_unit_id]" class="form-control input-sm sub_unit">
                     @foreach($sub_units as $key => $value)
-                        <option value="{{$key}}" data-multiplier="{{$value['multiplier']}}">
+                        <option value="{{$key}}" data-multiplier="{{$value['multiplier']}}" @if($_preselect_purchase == $key) selected @endif>
                             {{$value['name']}}
                         </option>
                     @endforeach
                 </select>
-            @else 
+            @else
                 {{ $product->unit->short_name }}
             @endif
 

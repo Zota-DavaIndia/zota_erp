@@ -1,6 +1,21 @@
 <div class="modal-dialog" role="document">
   <div class="modal-content">
 
+    @php
+        // Restore the saved intermediate state. The user-typed ratio
+        // (1 Baby Box = 10 Strips) is not stored; we reverse-compute
+        // it from the persisted base_unit_multiplier (100) divided by
+        // the intermediate unit's own base_unit_multiplier (10) = 10.
+        $saved_intermediate_unit = $unit->intermediate_unit_id
+            ? $sub_units->get($unit->intermediate_unit_id)
+            : null;
+        $saved_intermediate_multiplier = null;
+        if ($saved_intermediate_unit && $saved_intermediate_unit->base_unit_multiplier) {
+            $saved_intermediate_multiplier = (float) $unit->base_unit_multiplier
+                / (float) $saved_intermediate_unit->base_unit_multiplier;
+        }
+    @endphp
+
     {!! Form::open(['url' => action([\App\Http\Controllers\UnitController::class, 'update'], [$unit->id]), 'method' => 'PUT', 'id' => 'unit_edit_form' ]) !!}
 
     <div class="modal-header">
@@ -53,30 +68,30 @@
           <div class="well well-sm" style="margin-top: 5px; background: #f9f9f9;">
             <div class="checkbox" style="margin-top: 0;">
               <label>
-                {!! Form::checkbox('define_via_intermediate', 1, false, ['class' => 'toggle_intermediate', 'id' => 'define_via_intermediate']); !!}
+                {!! Form::checkbox('define_via_intermediate', 1, !empty($saved_intermediate_unit), ['class' => 'toggle_intermediate', 'id' => 'define_via_intermediate']); !!}
                 @lang('unit.define_via_intermediate_unit')
               </label>
               @show_tooltip(__('unit.intermediate_unit_help'))
             </div>
-            <div id="intermediate_unit_section" class="hide" style="margin-top: 10px;">
+            <div id="intermediate_unit_section" class="{{ !empty($saved_intermediate_unit) ? '' : 'hide' }}" style="margin-top: 10px;">
               <table class="table" style="margin-bottom: 5px;">
                 <tr>
                   <th style="vertical-align: middle;">1 <span class="intermediate_unit_label">{{$unit->actual_name}}</span></th>
                   <th style="vertical-align: middle;">=</th>
                   <td style="vertical-align: middle;">
-                    {!! Form::text('intermediate_multiplier', null, ['class' => 'form-control input_number', 'id' => 'intermediate_multiplier', 'placeholder' => __('unit.quantity')]); !!}
+                    {!! Form::text('intermediate_multiplier', $saved_intermediate_multiplier !== null ? @number_format($saved_intermediate_multiplier, 4, '.', '') : null, ['class' => 'form-control input_number', 'id' => 'intermediate_multiplier', 'placeholder' => __('unit.quantity')]); !!}
                   </td>
                   <td style="vertical-align: middle;">
                     <select name="intermediate_unit_id" id="intermediate_unit_id" class="form-control">
                       <option value="">@lang('unit.select_intermediate_unit')</option>
                       @foreach($sub_units as $su)
-                        <option value="{{ $su->id }}" data-multiplier="{{ $su->base_unit_multiplier }}" data-base_unit_id="{{ $su->base_unit_id }}">{{ $su->actual_name }} ({{ $su->short_name }})</option>
+                        <option value="{{ $su->id }}" data-multiplier="{{ $su->base_unit_multiplier }}" data-base_unit_id="{{ $su->base_unit_id }}" {{ ($saved_intermediate_unit && $saved_intermediate_unit->id == $su->id) ? 'selected' : '' }}>{{ $su->actual_name }} ({{ $su->short_name }})</option>
                       @endforeach
                     </select>
                   </td>
                 </tr>
               </table>
-              <p class="help-block text-success" id="calculated_base_multiplier_info" style="display:none;">
+              <p class="help-block text-success" id="calculated_base_multiplier_info" @if(empty($saved_intermediate_unit)) style="display:none;" @endif>
                 <i class="fa fa-info-circle"></i> <span id="calc_info_text"></span>
               </p>
             </div>
@@ -92,6 +107,26 @@
     </div>
 
     {!! Form::close() !!}
+
+    {{-- On edit-modal-open, if the unit was saved with an
+         intermediate, fire the auto-fill so the preview line
+         and the base_unit_multiplier field stay in sync. --}}
+    @if(!empty($saved_intermediate_unit))
+    <script type="text/javascript">
+    (function () {
+        var form = document.getElementById('unit_edit_form');
+        if (! form) { return; }
+        var im = form.querySelector('#intermediate_multiplier');
+        var iu = form.querySelector('#intermediate_unit_id');
+        function fire() {
+            var evt = new Event('change', { bubbles: true });
+            iu.dispatchEvent(evt);
+        }
+        // Wait one tick so select2 (if any) has initialised.
+        setTimeout(fire, 50);
+    })();
+    </script>
+    @endif
 
   </div><!-- /.modal-content -->
 </div><!-- /.modal-dialog -->

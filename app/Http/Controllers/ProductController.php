@@ -88,10 +88,24 @@ class ProductController extends Controller
         $selling_price_group_count = SellingPriceGroup::countSellingPriceGroups($business_id);
         $is_woocommerce = $this->moduleUtil->isModuleInstalled('Woocommerce');
 
+        // When the user has `product.view` but neither
+        // `access_all_locations` nor any explicit
+        // `location.<id>` permission, `permitted_locations()`
+        // returns an empty array. An empty whereIn / whereHas
+        // filter would silently drop EVERY product, so fall
+        // back to the full set of locations in the user's own
+        // business instead. This matches what the POS controller
+        // does and what the user expects when they log in with a
+        // role like "Pharmacy" that doesn't ship a location
+        // restriction.
+        $permitted_locations = auth()->user()->permitted_locations();
+        if ($permitted_locations !== 'all' && empty($permitted_locations)) {
+            $permitted_locations = BusinessLocation::where('business_id', $business_id)->pluck('id')->all();
+        }
+
         if (request()->ajax()) {
             //Filter by location
             $location_id = request()->get('location_id', null);
-            $permitted_locations = auth()->user()->permitted_locations();
 
             $query = Product::with(['media'])
                 ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
@@ -207,6 +221,24 @@ class ProductController extends Controller
 
             if (! empty(request()->get('repair_model_id'))) {
                 $products->where('products.repair_model_id', request()->get('repair_model_id'));
+            }
+
+            // Superadmin-only "master product" view: lets the admin
+            // see and edit the canonical product (is_master_product = 1)
+            // regardless of which business they are currently logged
+            // in to. The default behaviour (no filter / value = local)
+            // still scopes to the user's session business.
+            $master_view = request()->get('master_view', null);
+            if ($this->isSuperadmin() && $master_view === 'master') {
+                $products->where('products.is_master_product', 1)
+                    ->whereNull('products.master_product_id');
+            } elseif ($this->isSuperadmin() && $master_view === 'all') {
+                // Show everything: master's own business clones AND
+                // master products from any other business.
+                $products->where(function ($q) use ($business_id) {
+                    $q->where('products.business_id', $business_id)
+                      ->orWhere('products.is_master_product', 1);
+                });
             }
 
             return Datatables::of($products)
@@ -503,6 +535,26 @@ class ProductController extends Controller
                 $product_details['composition_id'] = (int) $request->input('composition_id');
             }
 
+            // Default sell / purchase sub-units. Each must be either
+            // the product's own unit_id or one of its sub_unit_ids
+            // (i.e. something the user can actually transact in).
+            // Anything else is silently dropped to avoid orphan FKs.
+            $allowed_unit_ids = array_merge(
+                [$product_details['unit_id'] ?? null],
+                (array) ($product_details['sub_unit_ids'] ?? [])
+            );
+            $allowed_unit_ids = array_filter($allowed_unit_ids);
+
+            $default_sell = $request->input('default_sell_sub_unit_id');
+            $product_details['default_sell_sub_unit_id'] = (! empty($default_sell) && in_array((int) $default_sell, array_map('intval', $allowed_unit_ids), true))
+                ? (int) $default_sell
+                : null;
+
+            $default_purchase = $request->input('default_purchase_sub_unit_id');
+            $product_details['default_purchase_sub_unit_id'] = (! empty($default_purchase) && in_array((int) $default_purchase, array_map('intval', $allowed_unit_ids), true))
+                ? (int) $default_purchase
+                : null;
+
             if (empty($product_details['sku'])) {
                 $product_details['sku'] = ' ';
             }
@@ -660,7 +712,21 @@ class ProductController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $business_id = request()->session()->get('user.business_id');
+        $is_superadmin = $this->isSuperadmin();
+        $session_business_id = request()->session()->get('user.business_id');
+
+        // For superadmins, allow loading any product by id so they
+        // can reach master products from any business. For everyone
+        // else, the product must belong to the session business.
+        $product = Product::with(['product_locations'])
+            ->when(! $is_superadmin, function ($q) use ($session_business_id) {
+                $q->where('business_id', $session_business_id);
+            })
+            ->where('id', $id)
+            ->firstOrFail();
+
+        $business_id = $product->business_id;
+
         $categories = Category::forDropdown($business_id, 'product');
         $brands = Brands::forDropdown($business_id);
 
@@ -669,11 +735,6 @@ class ProductController extends Controller
         $tax_attributes = $tax_dropdown['attributes'];
 
         $barcode_types = $this->barcode_types;
-
-        $product = Product::where('business_id', $business_id)
-                            ->with(['product_locations'])
-                            ->where('id', $id)
-                            ->firstOrFail();
 
         //Sub-category
         $sub_categories = [];
@@ -727,17 +788,32 @@ class ProductController extends Controller
         }
 
         $is_superadmin = $this->isSuperadmin();
+        $session_business_id = $request->session()->get('user.business_id');
 
         try {
-            $business_id = $request->session()->get('user.business_id');
+            $business_id = $session_business_id;
             $product_details = $request->only(['name', 'brand_id', 'unit_id', 'category_id', 'tax', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_description', 'sub_unit_ids', 'preparation_time_in_minutes', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_custom_field5', 'product_custom_field6', 'product_custom_field7', 'product_custom_field8', 'product_custom_field9', 'product_custom_field10', 'product_custom_field11', 'product_custom_field12', 'product_custom_field13', 'product_custom_field14', 'product_custom_field15', 'product_custom_field16', 'product_custom_field17', 'product_custom_field18', 'product_custom_field19', 'product_custom_field20',]);
 
             DB::beginTransaction();
 
-            $product = Product::where('business_id', $business_id)
-                                ->where('id', $id)
-                                ->with(['product_variations'])
-                                ->first();
+            // For superadmins, allow loading any product by id so they
+            // can update master products from any business context.
+            // The sync logic below will then push the change to all
+            // businesses. For non-superadmin users, scope to the
+            // session business.
+            $product = Product::with(['product_variations'])
+                ->when(! $is_superadmin, function ($q) use ($session_business_id) {
+                    $q->where('business_id', $session_business_id);
+                })
+                ->where('id', $id)
+                ->first();
+
+            if (! $product) {
+                DB::rollBack();
+                abort(404, 'Product not found.');
+            }
+
+            $business_id = $product->business_id;
 
             $module_form_fields = $this->moduleUtil->getModuleFormField('product_form_fields');
             if (! empty($module_form_fields)) {
@@ -803,6 +879,27 @@ class ProductController extends Controller
             } else {
                 $product->composition_id = null;
             }
+
+            // Default sell / purchase sub-units. Must belong to the
+            // product's own unit_id or its sub_unit_ids list. If the
+            // user cleared the sub_unit_ids list (or removed the
+            // previously-defaulted unit) we silently null the default
+            // to avoid an orphan FK.
+            $allowed_unit_ids = array_merge(
+                [$product->unit_id ?? null],
+                (array) ($product->sub_unit_ids ?? [])
+            );
+            $allowed_unit_ids = array_filter(array_map('intval', $allowed_unit_ids));
+
+            $default_sell = $request->input('default_sell_sub_unit_id');
+            $product->default_sell_sub_unit_id = (! empty($default_sell) && in_array((int) $default_sell, $allowed_unit_ids, true))
+                ? (int) $default_sell
+                : null;
+
+            $default_purchase = $request->input('default_purchase_sub_unit_id');
+            $product->default_purchase_sub_unit_id = (! empty($default_purchase) && in_array((int) $default_purchase, $allowed_unit_ids, true))
+                ? (int) $default_purchase
+                : null;
 
             $expiry_enabled = $request->session()->get('business.enable_product_expiry');
             if (! empty($expiry_enabled)) {
@@ -934,8 +1031,12 @@ class ProductController extends Controller
 
             DB::commit();
 
-            // If superadmin and this is a master product, sync updates to all businesses (defensive)
-            if ($is_superadmin && !empty($product->is_master_product) && $this->moduleUtil->isSuperadminInstalled()) {
+            // If superadmin, sync this product to all businesses
+            // (defensive). The sync method itself handles the
+            // clone->master write-back when the edited product is
+            // not itself a master, so the master always stays
+            // authoritative and other clones get the change.
+            if ($is_superadmin && $this->moduleUtil->isSuperadminInstalled()) {
                 try {
                     \Modules\Superadmin\Http\Controllers\SuperadminProductController::syncMasterProductUpdateToBusinesses($product);
                 } catch (\Exception $e) {

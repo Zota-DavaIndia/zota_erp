@@ -124,6 +124,18 @@
                             </label>
                         </div>
                     </div>
+                    @if (auth()->user()->can('superadmin'))
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                {!! Form::label('master_view', __('superadmin::lang.master_view') . ':') !!}
+                                {!! Form::select('master_view', [
+                                    'local'  => __('superadmin::lang.view_local_products'),
+                                    'master' => __('superadmin::lang.view_master_products'),
+                                    'all'    => __('superadmin::lang.view_all_products'),
+                                ], 'local', ['class' => 'form-control select2', 'id' => 'master_view']) !!}
+                            </div>
+                        </div>
+                    @endif
                     @if ($is_woocommerce)
                         <div class="col-md-3">
                             <div class="form-group">
@@ -255,6 +267,10 @@
                         if ($('#woocommerce_enabled').length == 1 && $('#woocommerce_enabled').is(
                                 ':checked')) {
                             d.woocommerce_enabled = 1;
+                        }
+
+                        if ($('#master_view').length == 1) {
+                            d.master_view = $('#master_view').val();
                         }
 
                         d = __datatable_ajax_callback(d);
@@ -546,7 +562,7 @@
             });
 
             $(document).on('change',
-                '#product_list_filter_type, #product_list_filter_category_id, #product_list_filter_brand_id, #product_list_filter_unit_id, #product_list_filter_tax_id, #location_id, #active_state, #repair_model_id',
+                '#product_list_filter_type, #product_list_filter_category_id, #product_list_filter_brand_id, #product_list_filter_unit_id, #product_list_filter_tax_id, #location_id, #active_state, #repair_model_id, #master_view',
                 function() {
                     if ($("#product_list_tab").hasClass('active')) {
                         product_table.ajax.reload();

@@ -52,6 +52,7 @@
             <div class="col-sm-4">
               <div class="form-group">
                 {!! Form::label('unit_id', __('product.unit') . ':*') !!}
+                @show_tooltip(__('product.base_unit_tooltip'))
                 <div class="input-group">
                   {!! Form::select('unit_id', $units, $product->unit_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2', 'required']); !!}
                   <span class="input-group-btn">
@@ -67,11 +68,26 @@
 
                 <select name="sub_unit_ids[]" class="form-control select2" multiple id="sub_unit_ids">
                   @foreach($sub_units as $sub_unit_id => $sub_unit_value)
-                    <option value="{{$sub_unit_id}}" 
-                      @if(is_array($product->sub_unit_ids) &&in_array($sub_unit_id, $product->sub_unit_ids))   selected 
+                    <option value="{{$sub_unit_id}}"
+                      @if(is_array($product->sub_unit_ids) &&in_array($sub_unit_id, $product->sub_unit_ids))   selected
                       @endif>{{$sub_unit_value['name']}}</option>
                   @endforeach
                 </select>
+              </div>
+            </div>
+            <div class="clearfix"></div>
+            <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
+              <div class="form-group">
+                {!! Form::label('default_sell_sub_unit_id', __('lang_v1.default_sell_sub_unit') . ':') !!}
+                @show_tooltip(__('lang_v1.default_sell_sub_unit_help'))
+                {!! Form::select('default_sell_sub_unit_id', [], null, ['class' => 'form-control select2', 'id' => 'default_sell_sub_unit_id', 'placeholder' => __('messages.please_select'), 'data-initial' => $product->default_sell_sub_unit_id]); !!}
+              </div>
+            </div>
+            <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
+              <div class="form-group">
+                {!! Form::label('default_purchase_sub_unit_id', __('lang_v1.default_purchase_sub_unit') . ':') !!}
+                @show_tooltip(__('lang_v1.default_purchase_sub_unit_help'))
+                {!! Form::select('default_purchase_sub_unit_id', [], null, ['class' => 'form-control select2', 'id' => 'default_purchase_sub_unit_id', 'placeholder' => __('messages.please_select'), 'data-initial' => $product->default_purchase_sub_unit_id]); !!}
               </div>
             </div>
 
@@ -398,6 +414,77 @@
   <script type="text/javascript">
     $(document).ready( function(){
       __page_leave_confirmation('#product_add_form');
+
+      // Mirror the create form's behaviour: keep the default
+      // sell / purchase sub-unit selects populated from the
+      // Related Sub Units multi-select + the product's own
+      // base unit.
+      function refreshDefaultSubUnitOptions() {
+        var selected = ($('#sub_unit_ids').val() || []).slice();
+        var baseId = $('select[name="unit_id"]').val();
+        if (baseId && selected.indexOf(baseId) === -1) {
+          selected.unshift(baseId);
+        }
+
+        var $sell = $('#default_sell_sub_unit_id');
+        var $purchase = $('#default_purchase_sub_unit_id');
+        // Prefer what the user currently has selected (read before
+        // the options are rebuilt); fall back to the saved value
+        // injected by the server via data-initial on first load,
+        // when the select has no options yet and val() is empty.
+        var sellVal = $sell.val() || $sell.data('initial');
+        var purchaseVal = $purchase.val() || $purchase.data('initial');
+
+        $sell.empty().append('<option value="">@lang("messages.please_select")</option>');
+        $purchase.empty().append('<option value="">@lang("messages.please_select")</option>');
+
+        var optsById = {};
+        $('#sub_unit_ids option').each(function () {
+          optsById[this.value] = $(this).text();
+        });
+        $('select[name="unit_id"] option').each(function () {
+          if (this.value) {
+            optsById[this.value] = $(this).text();
+          }
+        });
+
+        selected.forEach(function (id) {
+          var label = optsById[id] || id;
+          $sell.append('<option value="' + id + '">' + label + '</option>');
+          $purchase.append('<option value="' + id + '">' + label + '</option>');
+        });
+
+        if (sellVal && selected.indexOf(sellVal.toString()) !== -1) {
+          $sell.val(sellVal);
+          // The saved value has been applied; drop the marker so
+          // later refreshes respect the user's own choice
+          // (including deliberately clearing the default).
+          $sell.removeData('initial').removeAttr('data-initial');
+        } else {
+          $sell.val('');
+        }
+        if (purchaseVal && selected.indexOf(purchaseVal.toString()) !== -1) {
+          $purchase.val(purchaseVal);
+          $purchase.removeData('initial').removeAttr('data-initial');
+        } else {
+          $purchase.val('');
+        }
+        // Keep the select2 widgets' rendered text in sync with the
+        // underlying selects regardless of initialisation order.
+        // Namespaced so the form's dirty-tracking (page-leave
+        // confirmation) is not triggered by this programmatic sync.
+        $sell.trigger('change.select2');
+        $purchase.trigger('change.select2');
+      }
+
+      $(document).on('change', '#sub_unit_ids, select[name="unit_id"]', function () {
+        setTimeout(refreshDefaultSubUnitOptions, 30);
+      });
+
+      // Run once the page is ready (sub_unit_ids is pre-rendered on
+      // edit); this populates the options and re-applies the saved
+      // defaults injected via data-initial.
+      refreshDefaultSubUnitOptions();
     });
   </script>
 @endsection

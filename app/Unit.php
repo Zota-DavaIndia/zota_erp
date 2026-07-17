@@ -54,4 +54,15 @@ class Unit extends Model
     {
         return $this->belongsTo(\App\Unit::class, 'base_unit_id');
     }
+
+    /**
+     * The "via intermediate" unit this unit was defined
+     * against. e.g. Baby Box -> Strip, where Strip is the
+     * intermediate. Lets the chain (Tablet <- Strip <- Baby
+     * Box) survive a round-trip through the edit form.
+     */
+    public function intermediate_unit()
+    {
+        return $this->belongsTo(\App\Unit::class, 'intermediate_unit_id');
+    }
 }

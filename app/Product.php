@@ -86,6 +86,30 @@ class Product extends Model
     }
 
     /**
+     * Default unit pre-selected for this product at the POS
+     * (e.g. Strip when a medicine is mostly sold in strips
+     * but can also be sold loose in tablets). Must be a unit
+     * in this product's sub_unit_ids or the product's own
+     * unit_id; enforced at the controller level.
+     */
+    public function default_sell_sub_unit()
+    {
+        return $this->belongsTo(\App\Unit::class, 'default_sell_sub_unit_id');
+    }
+
+    /**
+     * Default unit pre-selected for this product at purchase
+     * entry (e.g. Baby Box when the supplier always delivers
+     * in baby boxes). Must be a unit in this product's
+     * sub_unit_ids or the product's own unit_id; enforced at
+     * the controller level.
+     */
+    public function default_purchase_sub_unit()
+    {
+        return $this->belongsTo(\App\Unit::class, 'default_purchase_sub_unit_id');
+    }
+
+    /**
      * Get category associated with the product.
      */
     public function category()

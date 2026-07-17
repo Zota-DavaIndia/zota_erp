@@ -48,6 +48,7 @@
         <div class="col-sm-4">
             <div class="form-group">
                 {!! Form::label('unit_id', __('product.unit') . ':*') !!}
+                @show_tooltip(__('product.base_unit_tooltip'))
                 <div class="input-group">
                     {!! Form::select('unit_id', $units, !empty($duplicate_product->unit_id) ? $duplicate_product->unit_id : session('business.default_unit'), ['class' => 'form-control select2', 'required']); !!}
                     <span class="input-group-btn">
@@ -72,6 +73,21 @@
             </div>
         </div>
         @endif
+        <div class="clearfix"></div>
+        <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
+            <div class="form-group">
+                {!! Form::label('default_sell_sub_unit_id', __('lang_v1.default_sell_sub_unit') . ':') !!}
+                @show_tooltip(__('lang_v1.default_sell_sub_unit_help'))
+                {!! Form::select('default_sell_sub_unit_id', [], null, ['class' => 'form-control select2', 'id' => 'default_sell_sub_unit_id', 'placeholder' => __('messages.please_select'), 'data-initial' => !empty($duplicate_product->default_sell_sub_unit_id) ? $duplicate_product->default_sell_sub_unit_id : null]); !!}
+            </div>
+        </div>
+        <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
+            <div class="form-group">
+                {!! Form::label('default_purchase_sub_unit_id', __('lang_v1.default_purchase_sub_unit') . ':') !!}
+                @show_tooltip(__('lang_v1.default_purchase_sub_unit_help'))
+                {!! Form::select('default_purchase_sub_unit_id', [], null, ['class' => 'form-control select2', 'id' => 'default_purchase_sub_unit_id', 'placeholder' => __('messages.please_select'), 'data-initial' => !empty($duplicate_product->default_purchase_sub_unit_id) ? $duplicate_product->default_purchase_sub_unit_id : null]); !!}
+            </div>
+        </div>
 
         <div class="col-sm-4 @if(!session('business.enable_brand')) hide @endif">
             <div class="form-group">
@@ -416,6 +432,81 @@
             //     console.log('Pressed: ' + iKeyCode);
             // }
         });
+
+        // Keep the Default sell / purchase sub-unit dropdowns in
+        // sync with the user's choices in the Related Sub Units
+        // multi-select. Only units ticked there (plus the product's
+        // own base unit) are valid defaults.
+        function refreshDefaultSubUnitOptions() {
+            var selected = $('#sub_unit_ids').val() || [];
+            var baseId = $('select[name="unit_id"]').val();
+            var allIds = selected.slice();
+            if (baseId && allIds.indexOf(baseId) === -1) {
+                allIds.unshift(baseId);
+            }
+
+            var $sell = $('#default_sell_sub_unit_id');
+            var $purchase = $('#default_purchase_sub_unit_id');
+            // Prefer the user's current selection; fall back to the
+            // data-initial injected when duplicating a product, so
+            // the source product's defaults carry over.
+            var sellVal = $sell.val() || $sell.data('initial');
+            var purchaseVal = $purchase.val() || $purchase.data('initial');
+
+            $sell.empty().append('<option value="">@lang("messages.please_select")</option>');
+            $purchase.empty().append('<option value="">@lang("messages.please_select")</option>');
+
+            // Build [{id,label,multiplier}] from the rendered
+            // <option>s of #sub_unit_ids (they already carry the
+            // data attributes we need via getSubUnits endpoint).
+            var optsById = {};
+            $('#sub_unit_ids option').each(function () {
+                optsById[this.value] = $(this).text();
+            });
+            // Also include the base unit's text.
+            $('select[name="unit_id"] option').each(function () {
+                if (this.value) {
+                    optsById[this.value] = $(this).text();
+                }
+            });
+
+            allIds.forEach(function (id) {
+                var label = optsById[id] || id;
+                $sell.append('<option value="' + id + '">' + label + '</option>');
+                $purchase.append('<option value="' + id + '">' + label + '</option>');
+            });
+
+            if (sellVal && allIds.indexOf(sellVal.toString()) !== -1) {
+                $sell.val(sellVal);
+                // Applied once; later refreshes follow the user's choice.
+                $sell.removeData('initial').removeAttr('data-initial');
+            }
+            if (purchaseVal && allIds.indexOf(purchaseVal.toString()) !== -1) {
+                $purchase.val(purchaseVal);
+                $purchase.removeData('initial').removeAttr('data-initial');
+            }
+            // Sync the select2 rendered text without touching the
+            // form's dirty-tracking.
+            $sell.trigger('change.select2');
+            $purchase.trigger('change.select2');
+        }
+
+        // Re-run on sub-unit and base-unit changes.
+        $(document).on('change', '#sub_unit_ids, select[name="unit_id"]', function () {
+            // Small delay so the select2 multi-select commit fires first.
+            setTimeout(refreshDefaultSubUnitOptions, 30);
+        });
+
+        // Initial population once sub_unit_ids has been filled by
+        // the existing getSubUnits AJAX call.
+        var __defaultSubUnitWatcher = setInterval(function () {
+            if ($('#sub_unit_ids option').length > 0) {
+                clearInterval(__defaultSubUnitWatcher);
+                refreshDefaultSubUnitOptions();
+            }
+        }, 100);
+        // Stop trying after 5s — fallback.
+        setTimeout(function () { clearInterval(__defaultSubUnitWatcher); }, 5000);
     });
 </script>
 @endsection
