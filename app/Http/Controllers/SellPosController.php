@@ -379,6 +379,11 @@ class SellPosController extends Controller
                     return $this->moduleUtil->quotaExpiredResponse('invoices', $business_id, action([\App\Http\Controllers\SellPosController::class, 'index']));
                 }
 
+                //Re-derive sub-unit multipliers from the DB; the
+                //posted values drive stock and price normalisation
+                //and must not be trusted from the client.
+                $input['products'] = $this->productUtil->normalizeSellLineMultipliers($input['products']);
+
                 $user_id = $request->session()->get('user.id');
 
                 $discount = ['discount_type' => $input['discount_type'],
@@ -1157,6 +1162,9 @@ class SellPosController extends Controller
 
             $is_direct_sale = false;
             if (!empty($input['products'])) {
+                //Re-derive sub-unit multipliers from the DB (see store()).
+                $input['products'] = $this->productUtil->normalizeSellLineMultipliers($input['products']);
+
                 //Get transaction value before updating.
                 $transaction_before = Transaction::find($id);
                 $status_before = $transaction_before->status;

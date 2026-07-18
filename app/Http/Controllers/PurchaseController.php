@@ -1051,7 +1051,7 @@ class PurchaseController extends Controller
                                     ->with(['unit', 'second_unit'])
                                     ->first();
 
-                $sub_units = $this->productUtil->getSubUnits($business_id, $product->unit->id, false, $product_id);
+                $sub_units = $this->productUtil->getSubUnits($business_id, $product->unit->id, false, $product_id, 'purchase');
 
                 $query = Variation::where('product_id', $product_id)
                                 ->with([
@@ -1161,7 +1161,7 @@ class PurchaseController extends Controller
 
                     $temp_array['product'] = $product;
 
-                    $sub_units = $this->productUtil->getSubUnits($business_id, $product->unit->id, false, $product->id);
+                    $sub_units = $this->productUtil->getSubUnits($business_id, $product->unit->id, false, $product->id, 'purchase');
 
                     $temp_array['sub_units'] = $sub_units;
                 } else {
@@ -1248,7 +1248,30 @@ class PurchaseController extends Controller
 
         $sub_units_array = [];
         foreach ($purchase_order->purchase_lines as $pl) {
-            $sub_units_array[$pl->id] = $this->productUtil->getSubUnits($business_id, $pl->product->unit->id, false, $pl->product_id);
+            $sub_units = $this->productUtil->getSubUnits($business_id, $pl->product->unit->id, false, $pl->product_id, 'purchase');
+            $sub_units_array[$pl->id] = $sub_units;
+
+            // PO line quantities/prices are stored in BASE units while
+            // the entry row pre-selects a sub-unit (the PO's own unit,
+            // or the product's default purchase unit). Convert the
+            // line into the pre-selected unit's terms so the rendered
+            // row is consistent and re-multiplies correctly on save —
+            // otherwise a PO for 1 Baby Box (100 tablets) would be
+            // saved as 100 boxes (10,000 tablets).
+            if (! empty($sub_units)) {
+                $target_unit_id = null;
+                if (! empty($pl->sub_unit_id) && isset($sub_units[$pl->sub_unit_id])) {
+                    $target_unit_id = $pl->sub_unit_id;
+                } elseif (! empty($pl->product->default_purchase_sub_unit_id) && isset($sub_units[$pl->product->default_purchase_sub_unit_id])) {
+                    $target_unit_id = $pl->product->default_purchase_sub_unit_id;
+                } else {
+                    $target_unit_id = array_key_first($sub_units);
+                }
+
+                $pl->sub_unit_id = $target_unit_id;
+                $multiplier = $sub_units[$target_unit_id]['multiplier'] ?? 1;
+                $this->productUtil->convertPurchaseLineToSubUnit($pl, $multiplier);
+            }
         }
         $hide_tax = request()->session()->get('business.enable_inline_tax') == 1 ? '' : 'hide';
         $currency_details = $this->transactionUtil->purchaseCurrencyDetails($business_id);

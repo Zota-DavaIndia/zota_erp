@@ -415,6 +415,21 @@ class StockAdjustmentController extends Controller
             $product->lot_numbers = $lot_numbers;
 
             $sub_units = $this->productUtil->getSubUnits($business_id, $product->unit_id, false, $product->id);
+
+            // Pre-select the unit the stock transfer row will count in
+            // when no explicit pick is available. Stock transfers move
+            // stock between locations in the same unit the product is
+            // normally sold in (default_sell_sub_unit_id), so the
+            // cashier/pharmacist doesn't have to think about it for
+            // every line.
+            if ($type == 'stock_transfer' && empty($product->sub_unit_id)) {
+                if (!empty($product->default_sell_sub_unit_id) && isset($sub_units[$product->default_sell_sub_unit_id])) {
+                    $product->sub_unit_id = $product->default_sell_sub_unit_id;
+                } elseif (!empty($sub_units)) {
+                    $product->sub_unit_id = array_key_first($sub_units);
+                }
+            }
+
             if ($type == 'stock_transfer') {
                 return view('stock_transfer.partials.product_table_row')
                     ->with(compact('product', 'row_index', 'sub_units'));

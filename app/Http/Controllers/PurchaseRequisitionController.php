@@ -473,7 +473,29 @@ class PurchaseRequisitionController extends Controller
 
         $sub_units_array = [];
         foreach ($purchase_requisition->purchase_lines as $pl) {
-            $sub_units_array[$pl->id] = $this->transactionUtil->getSubUnits($business_id, $pl->product->unit->id, false, $pl->product_id);
+            $sub_units = $this->transactionUtil->getSubUnits($business_id, $pl->product->unit->id, false, $pl->product_id, 'purchase');
+            $sub_units_array[$pl->id] = $sub_units;
+
+            // Requisition line quantities are stored in BASE units
+            // while the entry row pre-selects a sub-unit (requisitions
+            // have no unit of their own, so the product's default
+            // purchase unit or the first allowed unit is used).
+            // Convert the line into that unit's terms so the rendered
+            // quantity re-multiplies correctly on save.
+            if (! empty($sub_units)) {
+                $target_unit_id = null;
+                if (! empty($pl->sub_unit_id) && isset($sub_units[$pl->sub_unit_id])) {
+                    $target_unit_id = $pl->sub_unit_id;
+                } elseif (! empty($pl->product->default_purchase_sub_unit_id) && isset($sub_units[$pl->product->default_purchase_sub_unit_id])) {
+                    $target_unit_id = $pl->product->default_purchase_sub_unit_id;
+                } else {
+                    $target_unit_id = array_key_first($sub_units);
+                }
+
+                $pl->sub_unit_id = $target_unit_id;
+                $multiplier = $sub_units[$target_unit_id]['multiplier'] ?? 1;
+                $this->transactionUtil->convertPurchaseLineToSubUnit($pl, $multiplier);
+            }
         }
         $hide_tax = request()->session()->get('business.enable_inline_tax') == 1 ? '' : 'hide';
         $currency_details = $this->transactionUtil->purchaseCurrencyDetails($business_id);

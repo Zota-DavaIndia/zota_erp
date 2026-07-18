@@ -88,6 +88,20 @@
                 {!! Form::select('default_purchase_sub_unit_id', [], null, ['class' => 'form-control select2', 'id' => 'default_purchase_sub_unit_id', 'placeholder' => __('messages.please_select'), 'data-initial' => !empty($duplicate_product->default_purchase_sub_unit_id) ? $duplicate_product->default_purchase_sub_unit_id : null]); !!}
             </div>
         </div>
+        <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
+            <div class="form-group">
+                {!! Form::label('sell_sub_unit_ids', __('lang_v1.sell_sub_units') . ':') !!}
+                @show_tooltip(__('lang_v1.sell_sub_units_help'))
+                {!! Form::select('sell_sub_unit_ids[]', [], null, ['class' => 'form-control select2', 'multiple', 'id' => 'sell_sub_unit_ids', 'data-initial' => !empty($duplicate_product->sell_sub_unit_ids) ? json_encode($duplicate_product->sell_sub_unit_ids) : null]); !!}
+            </div>
+        </div>
+        <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
+            <div class="form-group">
+                {!! Form::label('purchase_sub_unit_ids', __('lang_v1.purchase_sub_units') . ':') !!}
+                @show_tooltip(__('lang_v1.purchase_sub_units_help'))
+                {!! Form::select('purchase_sub_unit_ids[]', [], null, ['class' => 'form-control select2', 'multiple', 'id' => 'purchase_sub_unit_ids', 'data-initial' => !empty($duplicate_product->purchase_sub_unit_ids) ? json_encode($duplicate_product->purchase_sub_unit_ids) : null]); !!}
+            </div>
+        </div>
 
         <div class="col-sm-4 @if(!session('business.enable_brand')) hide @endif">
             <div class="form-group">
@@ -476,15 +490,54 @@
                 $purchase.append('<option value="' + id + '">' + label + '</option>');
             });
 
-            if (sellVal && allIds.indexOf(sellVal.toString()) !== -1) {
+            // Preserve the saved value across re-renders even if the
+            // user removed its unit from the sub_unit_ids multi-select.
+            // We add a fallback <option> so the form does not silently
+            // drop the saved pick and re-validate to null on save.
+            [['sell', $sell, sellVal], ['purchase', $purchase, purchaseVal]].forEach(function (entry) {
+                var kind = entry[0], $el = entry[1], val = entry[2];
+                if (!val) return;
+                if (allIds.indexOf(val.toString()) !== -1) return;
+                var label = (optsById[val] || (kind === 'sell' ? 'Saved default (sell)' : 'Saved default (purchase)'));
+                $el.append('<option value="' + val + '">' + label + '</option>');
+            });
+
+            if (sellVal && ($sell.find('option[value="' + sellVal + '"]').length || allIds.indexOf(sellVal.toString()) !== -1)) {
                 $sell.val(sellVal);
-                // Applied once; later refreshes follow the user's choice.
-                $sell.removeData('initial').removeAttr('data-initial');
             }
-            if (purchaseVal && allIds.indexOf(purchaseVal.toString()) !== -1) {
+            if (purchaseVal && ($purchase.find('option[value="' + purchaseVal + '"]').length || allIds.indexOf(purchaseVal.toString()) !== -1)) {
                 $purchase.val(purchaseVal);
-                $purchase.removeData('initial').removeAttr('data-initial');
             }
+
+            // Rebuild the sellable/purchasable unit whitelists from the
+            // same allowed-unit list, preserving current selections (or
+            // the duplicate-product values injected via data-initial on
+            // first load).
+            ['#sell_sub_unit_ids', '#purchase_sub_unit_ids'].forEach(function (sel) {
+                var $el = $(sel);
+                if (!$el.length) {
+                    return;
+                }
+                var current = ($el.val() || []).map(String);
+                if (!current.length && $el.data('initial')) {
+                    var initial = $el.data('initial');
+                    if (typeof initial === 'string') {
+                        try { initial = JSON.parse(initial); } catch (e) { initial = []; }
+                    }
+                    current = (initial || []).map(String);
+                }
+                $el.empty();
+                allIds.forEach(function (id) {
+                    var label = optsById[id] || id;
+                    var selected_attr = current.indexOf(id.toString()) !== -1 ? ' selected' : '';
+                    $el.append('<option value="' + id + '"' + selected_attr + '>' + label + '</option>');
+                });
+                if (current.length) {
+                    $el.removeData('initial').removeAttr('data-initial');
+                }
+                $el.trigger('change.select2');
+            });
+
             // Sync the select2 rendered text without touching the
             // form's dirty-tracking.
             $sell.trigger('change.select2');

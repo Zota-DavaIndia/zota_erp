@@ -22,6 +22,7 @@ use App\Transaction;
 use App\TransactionPayment;
 use App\TransactionSellLine;
 use App\TransactionSellLinesPurchaseLines;
+use App\Unit;
 use App\Variation;
 use App\VariationLocationDetails;
 use Illuminate\Support\Facades\DB;
@@ -292,14 +293,56 @@ class TransactionUtil extends Util
         $modifiers_formatted = [];
         $combo_lines = [];
         $products_modified_combo = [];
+
+        // Preload per-product unit rules once for the sellable-unit
+        // whitelist check below.
+        $product_unit_rules = collect();
+        if ($transaction->type == 'sell') {
+            $line_product_ids = array_filter(array_unique(array_column($products, 'product_id')));
+            if (! empty($line_product_ids)) {
+                $product_unit_rules = Product::whereIn('id', $line_product_ids)
+                    ->get(['id', 'name', 'unit_id', 'sell_sub_unit_ids'])
+                    ->keyBy('id');
+            }
+        }
+
         foreach ($products as $product) {
             $multiplier = 1;
             if (isset($product['sub_unit_id']) && $product['sub_unit_id'] == $product['product_unit_id']) {
                 unset($product['sub_unit_id']);
             }
 
-            if (! empty($product['sub_unit_id']) && ! empty($product['base_unit_multiplier'])) {
-                $multiplier = $product['base_unit_multiplier'];
+            if (! empty($product['sub_unit_id'])) {
+                // Re-derive the multiplier from the units table — the
+                // client-posted base_unit_multiplier is never trusted,
+                // as it controls both price normalisation and stock.
+                $sub_unit = Unit::find($product['sub_unit_id']);
+                $multiplier = (! empty($sub_unit) && ! empty($sub_unit->base_unit_multiplier))
+                    ? $sub_unit->base_unit_multiplier
+                    : 1;
+                $product['base_unit_multiplier'] = $multiplier;
+            }
+
+            // Enforce the product's sellable-units whitelist
+            // (products.sell_sub_unit_ids) on newly added sell lines,
+            // e.g. a medicine sellable in Strip/Tablet must not be
+            // sold in Baby Box. Existing lines are left untouched so
+            // historical sales stay editable.
+            if ($transaction->type == 'sell'
+                && empty($product['transaction_sell_lines_id'])
+                && ! empty($product['product_id'])
+                && ! empty($product_unit_rules[$product['product_id']])) {
+                $rule = $product_unit_rules[$product['product_id']];
+                if (! empty($rule->sell_sub_unit_ids)) {
+                    $line_unit_id = ! empty($product['sub_unit_id']) ? $product['sub_unit_id'] : $rule->unit_id;
+                    if (! in_array((int) $line_unit_id, array_map('intval', $rule->sell_sub_unit_ids), true)) {
+                        $line_unit = Unit::find($line_unit_id);
+                        throw new \Exception(__('lang_v1.unit_not_allowed_for_selling', [
+                            'unit' => $line_unit->actual_name ?? $line_unit_id,
+                            'product' => $rule->name,
+                        ]));
+                    }
+                }
             }
 
             //Check if transaction_sell_lines_id is set, used when editing.

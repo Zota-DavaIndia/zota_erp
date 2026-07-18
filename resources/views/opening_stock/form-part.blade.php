@@ -59,6 +59,7 @@
 	$lot_number = $var['lot_number'];
 	$transaction_date = $var['transaction_date'];
 	$purchase_line_note = $var['purchase_line_note'];
+	$saved_sub_unit_id = $var['sub_unit_id'] ?? null;
 	@endphp
 
 <tr>
@@ -71,8 +72,8 @@
 	</td>
 	<td>
 		<div class="input-group">
-		  {!! Form::text('stocks[' . $key . '][' . $variation->id . '][' . $sub_key . '][quantity]', @format_quantity($qty) , ['class' => 'form-control input-sm input_number purchase_quantity input_quantity', 'required']); !!}
-		  <span class="input-group-addon">
+		  {!! Form::text('stocks[' . $key . '][' . $variation->id . '][' . $sub_key . '][quantity]', @format_quantity($qty) , ['class' => 'form-control input-sm input_number purchase_quantity input_quantity os_qty', 'required', 'data-initial' => $qty]); !!}
+		  <span class="input-group-addon os_qty_unit_label">
 		    {{ $product->unit->short_name }}
 		  </span>
 		</div>
@@ -82,9 +83,18 @@
             @lang('lang_v1.quantity_in_second_unit', ['unit' => $product->second_unit->short_name])*:</span><br>
             {!! Form::text('stocks[' . $key . '][' . $variation->id . '][' . $sub_key . '][secondary_unit_quantity]', @format_quantity($var['secondary_unit_quantity']) , ['class' => 'form-control input-sm input_number input_quantity', 'required']); !!}
 		@endif
+		@if(!empty($sub_units) && session('business.enable_sub_units'))
+			<br>
+			<select name="stocks[{{ $key }}][{{ $variation->id }}][{{ $sub_key }}][sub_unit_id]" class="form-control input-sm os_sub_unit" data-initial-sub-unit="{{ $saved_sub_unit_id }}">
+				<option value="">{{ $product->unit->short_name }} (base)</option>
+				@foreach($sub_units as $suid => $su)
+					<option value="{{ $suid }}" data-multiplier="{{ $su['multiplier'] }}" @if($saved_sub_unit_id == $suid) selected @endif>{{ $su['name'] }}</option>
+				@endforeach
+			</select>
+		@endif
 	</td>
 <td>
-	{!! Form::text('stocks[' . $key . '][' . $variation->id . '][' . $sub_key . '][purchase_price]', @num_format($purcahse_price) , ['class' => 'form-control input-sm input_number unit_price', 'required']); !!}
+	{!! Form::text('stocks[' . $key . '][' . $variation->id . '][' . $sub_key . '][purchase_price]', @num_format($purcahse_price) , ['class' => 'form-control input-sm input_number unit_price os_unit_price', 'required', 'data-initial' => @num_format($purcahse_price)]); !!}
 </td>
 
 @if($enable_expiry == 1 && $product->enable_stock == 1)
@@ -118,11 +128,25 @@
 					</td>
 					<td>
 					<div class="input-group">
-	              		<input class="form-control input-sm input_number purchase_quantity" required="" name="stocks[{{$key}}][{{$variation->id}}][__subkey__][quantity]" type="text" value="0">
-			              <span class="input-group-addon">
+	              		<input class="form-control input-sm input_number purchase_quantity input_quantity os_qty" required="" name="stocks[{{$key}}][{{$variation->id}}][__subkey__][quantity]" type="text" value="0">
+			              <span class="input-group-addon os_qty_unit_label">
 			                {{ $product->unit->short_name }}
 			              </span>
 	        			</div>
+					@if(!empty($product->second_unit))
+					<br>
+					<span>@lang('lang_v1.quantity_in_second_unit', ['unit' => $product->second_unit->short_name])*:</span><br>
+					<input class="form-control input-sm input_number input_quantity" required="" name="stocks[{{$key}}][{{$variation->id}}][__subkey__][secondary_unit_quantity]" type="text" value="0">
+					@endif
+					@if(!empty($sub_units) && session('business.enable_sub_units'))
+					<br>
+					<select name="stocks[{{$key}}][{{$variation->id}}][__subkey__][sub_unit_id]" class="form-control input-sm os_sub_unit">
+						<option value="">{{ $product->unit->short_name }} (base)</option>
+						@foreach($sub_units as $suid => $su)
+						<option value="{{ $suid }}" data-multiplier="{{ $su['multiplier'] }}">{{ $su['name'] }}</option>
+						@endforeach
+					</select>
+					@endif
 					</td>
 	<td>
 		<input class="form-control input-sm input_number unit_price" required="" name="stocks[{{$key}}][{{$variation->id}}][__subkey__][purchase_price]" type="text" value="{{@num_format($purcahse_price)}}">

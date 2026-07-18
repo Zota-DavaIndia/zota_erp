@@ -69,11 +69,16 @@ class SuperadminProductController extends Controller
 
         $created_by = $business->owner_id ?? $business->created_by ?? 1;
 
-        // Resolve unit for this business
+        // Resolve unit for this business (full definition, hierarchy included)
         $unit = Unit::find($master_product->unit_id);
-        $unit_name = $unit ? $unit->actual_name : 'Pieces';
-        $unit_short = $unit ? $unit->short_name : 'Pc(s)';
-        $unit_id = $this->resolveUnitForBusiness($business->id, $unit_name, $unit_short, $created_by);
+        $unit_id = $this->resolveUnitForBusiness($business->id, $unit, $created_by, 'Pieces', 'Pc(s)');
+
+        // Secondary unit (independent of the sub-unit hierarchy)
+        $secondary_unit_id = null;
+        if (!empty($master_product->secondary_unit_id)) {
+            $su = Unit::find($master_product->secondary_unit_id);
+            $secondary_unit_id = $this->resolveUnitForBusiness($business->id, $su, $created_by);
+        }
 
         // Resolve category
         $category_id = null;
@@ -93,49 +98,25 @@ class SuperadminProductController extends Controller
             }
         }
 
-        // Resolve sub-units (sub_unit_ids + default sell/purchase) by
-        // remapping the master unit ids to the corresponding unit ids
-        // in this business. Without this remap the cloned product
-        // would point at units that don't exist in the store and
-        // the POS row would never show the sub-unit dropdown.
-        $sub_unit_ids = [];
+        // Resolve sub-units (sub_unit_ids, sell/purchase whitelists and
+        // default sell/purchase units) by remapping the master unit
+        // ids to the corresponding unit ids in this business. Without
+        // this remap the cloned product would point at units that
+        // don't exist in the store and the POS row would never show
+        // the sub-unit dropdown.
+        $sub_unit_ids = $this->remapUnitIdList($business->id, $master_product->sub_unit_ids, $created_by);
+        $sell_sub_unit_ids = $this->remapUnitIdList($business->id, $master_product->sell_sub_unit_ids, $created_by);
+        $purchase_sub_unit_ids = $this->remapUnitIdList($business->id, $master_product->purchase_sub_unit_ids, $created_by);
+
         $default_sell_sub_unit_id = null;
+        if (!empty($master_product->default_sell_sub_unit_id)) {
+            $ms = Unit::find($master_product->default_sell_sub_unit_id);
+            $default_sell_sub_unit_id = $this->resolveUnitForBusiness($business->id, $ms, $created_by);
+        }
         $default_purchase_sub_unit_id = null;
-        if (!empty($master_product->sub_unit_ids) && is_array($master_product->sub_unit_ids)) {
-            $master_units = Unit::whereIn('id', $master_product->sub_unit_ids)->get();
-            foreach ($master_units as $mu) {
-                $mapped = $this->resolveUnitForBusiness(
-                    $business->id,
-                    $mu->actual_name,
-                    $mu->short_name,
-                    $created_by
-                );
-                if ($mapped) {
-                    $sub_unit_ids[] = $mapped;
-                }
-            }
-            if (!empty($master_product->default_sell_sub_unit_id)) {
-                $ms = Unit::find($master_product->default_sell_sub_unit_id);
-                if ($ms) {
-                    $default_sell_sub_unit_id = $this->resolveUnitForBusiness(
-                        $business->id,
-                        $ms->actual_name,
-                        $ms->short_name,
-                        $created_by
-                    );
-                }
-            }
-            if (!empty($master_product->default_purchase_sub_unit_id)) {
-                $mp = Unit::find($master_product->default_purchase_sub_unit_id);
-                if ($mp) {
-                    $default_purchase_sub_unit_id = $this->resolveUnitForBusiness(
-                        $business->id,
-                        $mp->actual_name,
-                        $mp->short_name,
-                        $created_by
-                    );
-                }
-            }
+        if (!empty($master_product->default_purchase_sub_unit_id)) {
+            $mp = Unit::find($master_product->default_purchase_sub_unit_id);
+            $default_purchase_sub_unit_id = $this->resolveUnitForBusiness($business->id, $mp, $created_by);
         }
 
         // Create the business product copy
@@ -145,6 +126,7 @@ class SuperadminProductController extends Controller
             'business_id' => $business->id,
             'type' => $master_product->type,
             'unit_id' => $unit_id,
+            'secondary_unit_id' => $secondary_unit_id,
             'category_id' => $category_id,
             'brand_id' => $brand_id,
             'sku' => $master_product->sku . '-' . $business->id,
@@ -159,6 +141,8 @@ class SuperadminProductController extends Controller
             'is_inactive' => $master_product->is_inactive ?? 0,
             'created_by' => $created_by,
             'sub_unit_ids' => $sub_unit_ids,
+            'sell_sub_unit_ids' => $sell_sub_unit_ids ?: null,
+            'purchase_sub_unit_ids' => $purchase_sub_unit_ids ?: null,
             'default_sell_sub_unit_id' => $default_sell_sub_unit_id,
             'default_purchase_sub_unit_id' => $default_purchase_sub_unit_id,
         ]);
@@ -262,8 +246,6 @@ class SuperadminProductController extends Controller
 
         // 2) Resolve master unit/category/brand/tax/composition/warranty
         $unit = Unit::find($master->unit_id);
-        $unit_name = $unit ? $unit->actual_name : 'Pieces';
-        $unit_short = $unit ? $unit->short_name : 'Pc(s)';
 
         $cat = !empty($master->category_id) ? Category::find($master->category_id) : null;
         $brand = !empty($master->brand_id) ? Brands::find($master->brand_id) : null;
@@ -275,7 +257,7 @@ class SuperadminProductController extends Controller
         foreach ($business_products as $bp) {
             $created_by = $bp->created_by;
 
-            $unit_id = $controller->resolveUnitForBusiness($bp->business_id, $unit_name, $unit_short, $created_by);
+            $unit_id = $controller->resolveUnitForBusiness($bp->business_id, $unit, $created_by, 'Pieces', 'Pc(s)');
 
             $category_id = null;
             if ($cat) {
@@ -309,55 +291,25 @@ class SuperadminProductController extends Controller
 
             $secondary_unit_id = null;
             if ($secondary_unit) {
-                $secondary_unit_id = $controller->resolveUnitForBusiness(
-                    $bp->business_id,
-                    $secondary_unit->actual_name,
-                    $secondary_unit->short_name,
-                    $created_by
-                );
+                $secondary_unit_id = $controller->resolveUnitForBusiness($bp->business_id, $secondary_unit, $created_by);
             }
 
             // Resolve sub-units for this business by remapping the
             // master unit ids to the corresponding unit ids in this
             // business (same logic as on create).
-            $sub_unit_ids = [];
+            $sub_unit_ids = $controller->remapUnitIdList($bp->business_id, $master->sub_unit_ids, $created_by);
+            $sell_sub_unit_ids = $controller->remapUnitIdList($bp->business_id, $master->sell_sub_unit_ids, $created_by);
+            $purchase_sub_unit_ids = $controller->remapUnitIdList($bp->business_id, $master->purchase_sub_unit_ids, $created_by);
+
             $default_sell_sub_unit_id = null;
+            if (!empty($master->default_sell_sub_unit_id)) {
+                $ms = Unit::find($master->default_sell_sub_unit_id);
+                $default_sell_sub_unit_id = $controller->resolveUnitForBusiness($bp->business_id, $ms, $created_by);
+            }
             $default_purchase_sub_unit_id = null;
-            if (!empty($master->sub_unit_ids) && is_array($master->sub_unit_ids)) {
-                $master_units = Unit::whereIn('id', $master->sub_unit_ids)->get();
-                foreach ($master_units as $mu) {
-                    $mapped = $controller->resolveUnitForBusiness(
-                        $bp->business_id,
-                        $mu->actual_name,
-                        $mu->short_name,
-                        $created_by
-                    );
-                    if ($mapped) {
-                        $sub_unit_ids[] = $mapped;
-                    }
-                }
-                if (!empty($master->default_sell_sub_unit_id)) {
-                    $ms = Unit::find($master->default_sell_sub_unit_id);
-                    if ($ms) {
-                        $default_sell_sub_unit_id = $controller->resolveUnitForBusiness(
-                            $bp->business_id,
-                            $ms->actual_name,
-                            $ms->short_name,
-                            $created_by
-                        );
-                    }
-                }
-                if (!empty($master->default_purchase_sub_unit_id)) {
-                    $mp = Unit::find($master->default_purchase_sub_unit_id);
-                    if ($mp) {
-                        $default_purchase_sub_unit_id = $controller->resolveUnitForBusiness(
-                            $bp->business_id,
-                            $mp->actual_name,
-                            $mp->short_name,
-                            $created_by
-                        );
-                    }
-                }
+            if (!empty($master->default_purchase_sub_unit_id)) {
+                $mp = Unit::find($master->default_purchase_sub_unit_id);
+                $default_purchase_sub_unit_id = $controller->resolveUnitForBusiness($bp->business_id, $mp, $created_by);
             }
 
             $bp->update([
@@ -404,6 +356,8 @@ class SuperadminProductController extends Controller
                 'product_custom_field19' => $master->product_custom_field19,
                 'product_custom_field20' => $master->product_custom_field20,
                 'sub_unit_ids' => $sub_unit_ids,
+                'sell_sub_unit_ids' => $sell_sub_unit_ids ?: null,
+                'purchase_sub_unit_ids' => $purchase_sub_unit_ids ?: null,
                 'default_sell_sub_unit_id' => $default_sell_sub_unit_id,
                 'default_purchase_sub_unit_id' => $default_purchase_sub_unit_id,
             ]);
@@ -434,7 +388,7 @@ class SuperadminProductController extends Controller
         if (!empty($source->unit_id)) {
             $u = Unit::find($source->unit_id);
             if ($u) {
-                $target->unit_id = $this->resolveUnitForBusiness($target_business_id, $u->actual_name, $u->short_name, $created_by);
+                $target->unit_id = $this->resolveUnitForBusiness($target_business_id, $u, $created_by);
             }
         } else {
             $target->unit_id = null;
@@ -444,7 +398,7 @@ class SuperadminProductController extends Controller
         if (!empty($source->secondary_unit_id)) {
             $u = Unit::find($source->secondary_unit_id);
             $target->secondary_unit_id = $u
-                ? $this->resolveUnitForBusiness($target_business_id, $u->actual_name, $u->short_name, $created_by)
+                ? $this->resolveUnitForBusiness($target_business_id, $u, $created_by)
                 : null;
         } else {
             $target->secondary_unit_id = null;
@@ -500,23 +454,15 @@ class SuperadminProductController extends Controller
             $target->warranty_id = null;
         }
 
-        // sub_unit_ids + default sell/purchase sub-units
-        $sub_unit_ids = [];
-        if (!empty($source->sub_unit_ids) && is_array($source->sub_unit_ids)) {
-            $source_units = Unit::whereIn('id', $source->sub_unit_ids)->get();
-            foreach ($source_units as $su) {
-                $mapped = $this->resolveUnitForBusiness($target_business_id, $su->actual_name, $su->short_name, $created_by);
-                if ($mapped) {
-                    $sub_unit_ids[] = $mapped;
-                }
-            }
-        }
-        $target->sub_unit_ids = $sub_unit_ids ?: null;
+        // sub_unit_ids, sell/purchase whitelists + default sell/purchase sub-units
+        $target->sub_unit_ids = $this->remapUnitIdList($target_business_id, $source->sub_unit_ids, $created_by) ?: null;
+        $target->sell_sub_unit_ids = $this->remapUnitIdList($target_business_id, $source->sell_sub_unit_ids, $created_by) ?: null;
+        $target->purchase_sub_unit_ids = $this->remapUnitIdList($target_business_id, $source->purchase_sub_unit_ids, $created_by) ?: null;
 
         if (!empty($source->default_sell_sub_unit_id)) {
             $su = Unit::find($source->default_sell_sub_unit_id);
             $target->default_sell_sub_unit_id = $su
-                ? $this->resolveUnitForBusiness($target_business_id, $su->actual_name, $su->short_name, $created_by)
+                ? $this->resolveUnitForBusiness($target_business_id, $su, $created_by)
                 : null;
         } else {
             $target->default_sell_sub_unit_id = null;
@@ -524,7 +470,7 @@ class SuperadminProductController extends Controller
         if (!empty($source->default_purchase_sub_unit_id)) {
             $pu = Unit::find($source->default_purchase_sub_unit_id);
             $target->default_purchase_sub_unit_id = $pu
-                ? $this->resolveUnitForBusiness($target_business_id, $pu->actual_name, $pu->short_name, $created_by)
+                ? $this->resolveUnitForBusiness($target_business_id, $pu, $created_by)
                 : null;
         } else {
             $target->default_purchase_sub_unit_id = null;
@@ -646,25 +592,167 @@ class SuperadminProductController extends Controller
     }
 
     /**
-     * Find or create a unit in a business by name.
+     * Find or create a unit in a business, replicating the FULL unit
+     * definition of the source (master) unit — hierarchy included.
+     *
+     * Units are matched per business by actual_name. When the unit is
+     * created, and also when a same-named unit already exists, its
+     * definition is aligned with the source unit: short_name,
+     * allow_decimal, base_unit_id (re-pointed to this business's own
+     * copy of the source's base unit, resolved recursively),
+     * base_unit_multiplier and intermediate_unit_id. Without this the
+     * store copy is a "flat" unit (no base link, no multiplier) and
+     * the POS/purchase sub-unit dropdowns can never appear, while
+     * conversions silently fall back to x1.
+     *
+     * Healing on every call also means: re-syncing a master product
+     * repairs any store whose units were created flat by older code,
+     * and later unit-definition changes in the master business
+     * propagate to stores the next time any sync touches them.
+     *
+     * Public so maintenance commands (units:repair-store-hierarchy)
+     * can reuse the exact same resolution logic.
+     *
+     * @param  int  $business_id  target business
+     * @param  \App\Unit|null  $source_unit  unit row to replicate
+     * @param  int  $created_by
+     * @param  string|null  $fallback_name  used only when $source_unit is
+     *                      null (legacy data) — creates/finds a flat
+     *                      unit by name as before.
+     * @param  string|null  $fallback_short_name
+     * @param  int  $depth  internal recursion guard
+     * @return int|null unit id in the target business
      */
-    private function resolveUnitForBusiness($business_id, $unit_name, $short_name, $created_by)
+    public function resolveUnitForBusiness($business_id, $source_unit, $created_by, $fallback_name = null, $fallback_short_name = null, $depth = 0)
     {
+        // Legacy fallback: no source unit definition available.
+        if (empty($source_unit)) {
+            if (empty($fallback_name)) {
+                return null;
+            }
+            $unit = Unit::where('business_id', $business_id)
+                ->where('actual_name', $fallback_name)
+                ->first();
+            if (!$unit) {
+                $unit = Unit::create([
+                    'business_id' => $business_id,
+                    'actual_name' => $fallback_name,
+                    'short_name' => $fallback_short_name ?: $fallback_name,
+                    'allow_decimal' => 0,
+                    'created_by' => $created_by,
+                ]);
+            }
+
+            return $unit->id;
+        }
+
+        // Guard against pathological cycles in unit data. A valid
+        // hierarchy is at most base <- sub-unit (<- intermediate ref),
+        // so a depth beyond 3 means the source data is circular.
+        if ($depth > 3) {
+            \Log::warning('resolveUnitForBusiness: unit hierarchy too deep/circular for unit ' . $source_unit->id);
+
+            return null;
+        }
+
+        // Resolve the hierarchy references FIRST so the target ids
+        // exist before we create/heal this unit.
+        $target_base_id = null;
+        if (!empty($source_unit->base_unit_id)) {
+            $source_base = Unit::find($source_unit->base_unit_id);
+            $target_base_id = $this->resolveUnitForBusiness($business_id, $source_base, $created_by, null, null, $depth + 1);
+        }
+
+        $target_intermediate_id = null;
+        if (!empty($source_unit->intermediate_unit_id)) {
+            $source_intermediate = Unit::find($source_unit->intermediate_unit_id);
+            $target_intermediate_id = $this->resolveUnitForBusiness($business_id, $source_intermediate, $created_by, null, null, $depth + 1);
+        }
+
         $unit = Unit::where('business_id', $business_id)
-            ->where('actual_name', $unit_name)
+            ->where('actual_name', $source_unit->actual_name)
             ->first();
+
+        // A unit must never reference itself.
+        if (!empty($unit)) {
+            if ($target_base_id == $unit->id) {
+                $target_base_id = null;
+            }
+            if ($target_intermediate_id == $unit->id) {
+                $target_intermediate_id = null;
+            }
+        }
 
         if (!$unit) {
             $unit = Unit::create([
                 'business_id' => $business_id,
-                'actual_name' => $unit_name,
-                'short_name' => $short_name,
-                'allow_decimal' => 0,
+                'actual_name' => $source_unit->actual_name,
+                'short_name' => $source_unit->short_name,
+                'allow_decimal' => $source_unit->allow_decimal ?? 0,
+                'base_unit_id' => $target_base_id,
+                'base_unit_multiplier' => !empty($target_base_id) ? $source_unit->base_unit_multiplier : null,
+                'intermediate_unit_id' => $target_intermediate_id,
                 'created_by' => $created_by,
             ]);
+
+            return $unit->id;
+        }
+
+        // Heal an existing unit whose definition drifted from the
+        // source (flat legacy clones, changed multipliers, wrong
+        // decimal flag, missing intermediate link).
+        $dirty = false;
+
+        if ((int) $unit->allow_decimal !== (int) ($source_unit->allow_decimal ?? 0)) {
+            $unit->allow_decimal = $source_unit->allow_decimal ?? 0;
+            $dirty = true;
+        }
+        if ($unit->base_unit_id != $target_base_id) {
+            $unit->base_unit_id = $target_base_id;
+            $dirty = true;
+        }
+        $target_multiplier = !empty($target_base_id) ? $source_unit->base_unit_multiplier : null;
+        if (abs((float) $unit->base_unit_multiplier - (float) $target_multiplier) > 0.0001
+            || (is_null($unit->base_unit_multiplier) !== is_null($target_multiplier))) {
+            $unit->base_unit_multiplier = $target_multiplier;
+            $dirty = true;
+        }
+        if ($unit->intermediate_unit_id != $target_intermediate_id) {
+            $unit->intermediate_unit_id = $target_intermediate_id;
+            $dirty = true;
+        }
+
+        if ($dirty) {
+            $unit->save();
         }
 
         return $unit->id;
+    }
+
+    /**
+     * Remap a list of unit ids from one business into another,
+     * resolving (and healing) each unit by name. Used for
+     * sub_unit_ids / sell_sub_unit_ids / purchase_sub_unit_ids.
+     *
+     * @param  int  $business_id
+     * @param  array|null  $unit_ids  source-business unit ids
+     * @param  int  $created_by
+     * @return array target-business unit ids (deduplicated)
+     */
+    public function remapUnitIdList($business_id, $unit_ids, $created_by)
+    {
+        $mapped_ids = [];
+        if (!empty($unit_ids) && is_array($unit_ids)) {
+            $source_units = Unit::whereIn('id', $unit_ids)->get();
+            foreach ($source_units as $source_unit) {
+                $mapped = $this->resolveUnitForBusiness($business_id, $source_unit, $created_by);
+                if ($mapped && !in_array($mapped, $mapped_ids)) {
+                    $mapped_ids[] = $mapped;
+                }
+            }
+        }
+
+        return $mapped_ids;
     }
 
     /**

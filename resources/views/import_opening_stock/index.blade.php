@@ -97,6 +97,11 @@
                     <td>@lang('lang_v1.expiry_date') <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
                     <td>{!! __('lang_v1.expiry_date_in_business_date_format') !!} <br/> <b>{{$date_format}}</b>, @lang('lang_v1.type'): <b>text</b>, @lang('lang_v1.example'): <b>{{@format_date('today')}}</b></td>
                 </tr>
+                <tr>
+                    <td>7</td>
+                    <td>@lang('lang_v1.sub_unit') <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
+                    <td>@lang('lang_v1.import_opening_stock_sub_unit_help')</td>
+                </tr>
             </table>
         @endcomponent
         </div>

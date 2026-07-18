@@ -165,6 +165,39 @@ class ImportOpeningStockController extends Controller
                         break;
                     }
 
+                    // Optional column [6]: SUB-UNIT (e.g. "Baby Box").
+                    // If provided, the quantity is interpreted in that
+                    // unit and converted to base units here so the rest
+                    // of the flow stores stock in the canonical base
+                    // unit. The units table is the source of truth for
+                    // the multiplier; we resolve by name within this
+                    // business.
+                    $sub_unit_id = null;
+                    if (! empty(trim($value[6] ?? ''))) {
+                        $sub_unit_name = trim($value[6]);
+                        $sub_unit = \App\Unit::where('business_id', $business_id)
+                            ->where(function ($q) use ($sub_unit_name) {
+                                $q->where('name', $sub_unit_name)
+                                  ->orWhere('actual_name', $sub_unit_name)
+                                  ->orWhere('short_name', $sub_unit_name);
+                            })
+                            ->first();
+                        if (empty($sub_unit)) {
+                            $is_valid = false;
+                            $error_msg = "Sub-unit '$sub_unit_name' not found in row no. $row_no";
+                            break;
+                        }
+                        $sub_unit_id = $sub_unit->id;
+                        $multiplier = ! empty($sub_unit->base_unit_multiplier) ? $sub_unit->base_unit_multiplier : 1;
+                        $opening_stock['quantity'] = $opening_stock['quantity'] * $multiplier;
+                        // Cost is per sub-unit; convert to per-base-unit
+                        // (per-Tablet) for storage.
+                        if ($multiplier != 0) {
+                            $unit_cost_before_tax = $unit_cost_before_tax / $multiplier;
+                        }
+                    }
+                    $opening_stock['sub_unit_id'] = $sub_unit_id;
+
                     //Check for tra, location_id, opening_stock_product_id, type=opening stock.
                     $os_transaction = Transaction::where('business_id', $business_id)
                             ->where('location_id', $location->id)
@@ -263,6 +296,7 @@ class ImportOpeningStockController extends Controller
             'purchase_price_inc_tax' => $unit_cost_before_tax + $item_tax,
             'exp_date' => ! empty($opening_stock['exp_date']) ? $opening_stock['exp_date'] : null,
             'lot_number' => ! empty($opening_stock['lot_number']) ? $opening_stock['lot_number'] : null,
+            'sub_unit_id' => ! empty($opening_stock['sub_unit_id']) ? $opening_stock['sub_unit_id'] : null,
         ]);
         //Update variation location details
         $this->productUtil->updateProductQuantity($opening_stock['location_id'], $product->id, $product->variation_id, $opening_stock['quantity']);

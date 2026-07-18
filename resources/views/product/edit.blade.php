@@ -80,14 +80,54 @@
               <div class="form-group">
                 {!! Form::label('default_sell_sub_unit_id', __('lang_v1.default_sell_sub_unit') . ':') !!}
                 @show_tooltip(__('lang_v1.default_sell_sub_unit_help'))
-                {!! Form::select('default_sell_sub_unit_id', [], null, ['class' => 'form-control select2', 'id' => 'default_sell_sub_unit_id', 'placeholder' => __('messages.please_select'), 'data-initial' => $product->default_sell_sub_unit_id]); !!}
+                @php
+                  // Hand-built <select>: Form::select with [] drops the
+                  // selected value, so we render the options ourselves
+                  // and pre-include the saved value (even if it is no
+                  // longer in the current sub_unit_ids list).
+                  $saved_sell_id = $product->default_sell_sub_unit_id;
+                  $saved_purchase_id = $product->default_purchase_sub_unit_id;
+                  $saved_sell_unit = ! empty($saved_sell_id) ? \App\Unit::find($saved_sell_id) : null;
+                  $saved_purchase_unit = ! empty($saved_purchase_id) ? \App\Unit::find($saved_purchase_id) : null;
+                @endphp
+                <select name="default_sell_sub_unit_id" class="form-control select2" id="default_sell_sub_unit_id" data-initial="{{ $saved_sell_id }}">
+                  <option value="">@lang('messages.please_select')</option>
+                  @foreach($sub_units as $id => $sub_unit_value)
+                    <option value="{{ $id }}" @if($id == $saved_sell_id) selected @endif>{{ $sub_unit_value['name'] }}</option>
+                  @endforeach
+                  @if($saved_sell_unit && !isset($sub_units[$saved_sell_id]))
+                    <option value="{{ $saved_sell_id }}" selected>{{ $saved_sell_unit->actual_name }}</option>
+                  @endif
+                </select>
               </div>
             </div>
             <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
               <div class="form-group">
                 {!! Form::label('default_purchase_sub_unit_id', __('lang_v1.default_purchase_sub_unit') . ':') !!}
                 @show_tooltip(__('lang_v1.default_purchase_sub_unit_help'))
-                {!! Form::select('default_purchase_sub_unit_id', [], null, ['class' => 'form-control select2', 'id' => 'default_purchase_sub_unit_id', 'placeholder' => __('messages.please_select'), 'data-initial' => $product->default_purchase_sub_unit_id]); !!}
+                <select name="default_purchase_sub_unit_id" class="form-control select2" id="default_purchase_sub_unit_id" data-initial="{{ $saved_purchase_id }}">
+                  <option value="">@lang('messages.please_select')</option>
+                  @foreach($sub_units as $id => $sub_unit_value)
+                    <option value="{{ $id }}" @if($id == $saved_purchase_id) selected @endif>{{ $sub_unit_value['name'] }}</option>
+                  @endforeach
+                  @if($saved_purchase_unit && !isset($sub_units[$saved_purchase_id]))
+                    <option value="{{ $saved_purchase_id }}" selected>{{ $saved_purchase_unit->actual_name }}</option>
+                  @endif
+                </select>
+              </div>
+            </div>
+            <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
+              <div class="form-group">
+                {!! Form::label('sell_sub_unit_ids', __('lang_v1.sell_sub_units') . ':') !!}
+                @show_tooltip(__('lang_v1.sell_sub_units_help'))
+                {!! Form::select('sell_sub_unit_ids[]', [], null, ['class' => 'form-control select2', 'multiple', 'id' => 'sell_sub_unit_ids', 'data-initial' => !empty($product->sell_sub_unit_ids) ? json_encode($product->sell_sub_unit_ids) : null]); !!}
+              </div>
+            </div>
+            <div class="col-sm-3 @if(!session('business.enable_sub_units')) hide @endif default-sub-unit-fields">
+              <div class="form-group">
+                {!! Form::label('purchase_sub_unit_ids', __('lang_v1.purchase_sub_units') . ':') !!}
+                @show_tooltip(__('lang_v1.purchase_sub_units_help'))
+                {!! Form::select('purchase_sub_unit_ids[]', [], null, ['class' => 'form-control select2', 'multiple', 'id' => 'purchase_sub_unit_ids', 'data-initial' => !empty($product->purchase_sub_unit_ids) ? json_encode($product->purchase_sub_unit_ids) : null]); !!}
               </div>
             </div>
 
@@ -469,6 +509,35 @@
         } else {
           $purchase.val('');
         }
+
+        // Rebuild the sellable/purchasable unit whitelists from the
+        // same allowed-unit list, preserving current selections (or
+        // the saved values injected via data-initial on first load).
+        ['#sell_sub_unit_ids', '#purchase_sub_unit_ids'].forEach(function (sel) {
+          var $el = $(sel);
+          if (!$el.length) {
+            return;
+          }
+          var current = ($el.val() || []).map(String);
+          if (!current.length && $el.data('initial')) {
+            var initial = $el.data('initial');
+            if (typeof initial === 'string') {
+              try { initial = JSON.parse(initial); } catch (e) { initial = []; }
+            }
+            current = (initial || []).map(String);
+          }
+          $el.empty();
+          selected.forEach(function (id) {
+            var label = optsById[id] || id;
+            var selected_attr = current.indexOf(id.toString()) !== -1 ? ' selected' : '';
+            $el.append('<option value="' + id + '"' + selected_attr + '>' + label + '</option>');
+          });
+          if (current.length) {
+            $el.removeData('initial').removeAttr('data-initial');
+          }
+          $el.trigger('change.select2');
+        });
+
         // Keep the select2 widgets' rendered text in sync with the
         // underlying selects regardless of initialisation order.
         // Namespaced so the form's dirty-tracking (page-leave

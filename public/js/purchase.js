@@ -773,6 +773,17 @@ $(document).ready(function() {
         var cp_element = tr.find('input.purchase_unit_cost_without_discount');
         __write_number(cp_element, unit_cost);
         cp_element.change();
+
+        //Rescale the per-base-unit "previous purchase price" hint
+        //into the selected unit so it stays comparable with the
+        //cost input beside it.
+        var prev_price_span = tr.find('.prev_unit_price_display');
+        if (prev_price_span.length && typeof __currency_trans_from_en == 'function') {
+            var base_prev = parseFloat(prev_price_span.data('base_price'));
+            if (!isNaN(base_prev) && !isNaN(multiplier)) {
+                prev_price_span.text(__currency_trans_from_en(base_prev * multiplier, true));
+            }
+        }
     });
     toggle_search();
 });
@@ -824,7 +835,18 @@ function append_purchase_lines(data, row_count, trigger_change = false) {
 
             //Check if multipler is present then multiply it when a new row is added.
             if(__getUnitMultiplier(row) > 1){
-                row.find('select.sub_unit').trigger('change');
+                var sub_unit_select = row.find('select.sub_unit');
+                if (sub_unit_select.data('skip_price_sync')) {
+                    //Row was prefilled with negotiated/imported prices
+                    //already expressed in the pre-selected unit (PO ->
+                    //purchase conversion, CSV import) — applying the
+                    //unit change would overwrite them with the product
+                    //default price. Consume the flag instead so manual
+                    //unit changes afterwards behave normally.
+                    sub_unit_select.removeData('skip_price_sync').removeAttr('data-skip_price_sync');
+                } else {
+                    sub_unit_select.trigger('change');
+                }
             }
 
             if (trigger_change && row.find('.purchase_unit_cost_without_discount').length) {

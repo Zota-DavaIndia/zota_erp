@@ -420,6 +420,34 @@ class ImportProductsController extends Controller
                             } else {
                                 $product_array['opening_stock_details']['exp_date'] = null;
                             }
+
+                            // Optional column [34]: SUB-UNIT. If set,
+                            // the opening-stock quantity is interpreted
+                            // in this sub-unit (e.g. "Baby Box") and
+                            // converted to base units here. The units
+                            // table is the source of truth for the
+                            // multiplier; we resolve by name within
+                            // this business. Placed well past the
+                            // existing columns so legacy CSVs (which
+                            // only have 28-30 columns) keep working.
+                            if (! empty(trim($value[34] ?? ''))) {
+                                $sub_unit_name = trim($value[34]);
+                                $sub_unit = \App\Unit::where('business_id', $business_id)
+                                    ->where(function ($q) use ($sub_unit_name) {
+                                        $q->where('name', $sub_unit_name)
+                                          ->orWhere('actual_name', $sub_unit_name)
+                                          ->orWhere('short_name', $sub_unit_name);
+                                    })
+                                    ->first();
+                                if (empty($sub_unit)) {
+                                    $is_valid = false;
+                                    $error_msg = "Sub-unit '$sub_unit_name' not found in row no. $row_no";
+                                    break;
+                                }
+                                $multiplier = ! empty($sub_unit->base_unit_multiplier) ? $sub_unit->base_unit_multiplier : 1;
+                                $product_array['opening_stock_details']['quantity'] = $product_array['opening_stock_details']['quantity'] * $multiplier;
+                                $product_array['opening_stock_details']['sub_unit_id'] = $sub_unit->id;
+                            }
                         }
                     } elseif ($product_array['type'] == 'variable') {
                         $variation_name = trim($value[14]);
@@ -596,6 +624,32 @@ class ImportProductsController extends Controller
                                     $product_array['variation']['variations'][$k]['opening_stock_exp_date'] = \Carbon::createFromFormat('m-d-Y', trim($value[23]))->format('Y-m-d');
                                 } else {
                                     $product_array['variation']['variations'][$k]['opening_stock_exp_date'] = null;
+                                }
+                            }
+
+                            // Optional column [34]: SUB-UNIT applied to
+                            // every variation's opening stock for this
+                            // row.
+                            if (! empty(trim($value[34] ?? ''))) {
+                                $sub_unit_name = trim($value[34]);
+                                $sub_unit = \App\Unit::where('business_id', $business_id)
+                                    ->where(function ($q) use ($sub_unit_name) {
+                                        $q->where('name', $sub_unit_name)
+                                          ->orWhere('actual_name', $sub_unit_name)
+                                          ->orWhere('short_name', $sub_unit_name);
+                                    })
+                                    ->first();
+                                if (empty($sub_unit)) {
+                                    $is_valid = false;
+                                    $error_msg = "Sub-unit '$sub_unit_name' not found in row no. $row_no";
+                                    break;
+                                }
+                                $multiplier = ! empty($sub_unit->base_unit_multiplier) ? $sub_unit->base_unit_multiplier : 1;
+                                foreach ($product_array['variation']['variations'] as $vk => $vv) {
+                                    if (! empty($vv['opening_stock'])) {
+                                        $product_array['variation']['variations'][$vk]['opening_stock'] = $vv['opening_stock'] * $multiplier;
+                                        $product_array['variation']['variations'][$vk]['opening_stock_sub_unit_id'] = $sub_unit->id;
+                                    }
                                 }
                             }
                         }
@@ -810,6 +864,7 @@ class ImportProductsController extends Controller
             'purchase_price' => $variation->default_purchase_price,
             'purchase_price_inc_tax' => $variation->dpp_inc_tax,
             'exp_date' => ! empty($opening_stock['exp_date']) ? $opening_stock['exp_date'] : null,
+            'sub_unit_id' => ! empty($opening_stock['sub_unit_id']) ? $opening_stock['sub_unit_id'] : null,
         ]);
         //Update variation location details
         $this->productUtil->updateProductQuantity($opening_stock['location_id'], $product->id, $variation->id, $opening_stock['quantity']);
@@ -867,6 +922,7 @@ class ImportProductsController extends Controller
                         $opening_stock = [
                             'quantity' => $variation_os['opening_stock'],
                             'exp_date' => $variation_os['opening_stock_exp_date'],
+                            'sub_unit_id' => $variation_os['opening_stock_sub_unit_id'] ?? null,
                         ];
 
                         $total_before_tax = $total_before_tax + ($variation_os['opening_stock'] * $variation->dpp_inc_tax);
@@ -888,6 +944,7 @@ class ImportProductsController extends Controller
                         'purchase_price' => $variation->default_purchase_price,
                         'purchase_price_inc_tax' => $variation->dpp_inc_tax,
                         'exp_date' => ! empty($opening_stock['exp_date']) ? $opening_stock['exp_date'] : null,
+                        'sub_unit_id' => ! empty($opening_stock['sub_unit_id']) ? $opening_stock['sub_unit_id'] : null,
                     ]);
                     //Update variation location details
                     $this->productUtil->updateProductQuantity($location_id, $product->id, $variation->id, $opening_stock['quantity']);

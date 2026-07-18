@@ -582,7 +582,7 @@ class Util
      * @param  int  $product_id = null
      * @return array
      */
-    public function getSubUnits($business_id, $unit_id, $return_main_unit_if_empty = false, $product_id = null)
+    public function getSubUnits($business_id, $unit_id, $return_main_unit_if_empty = false, $product_id = null, $context = null)
     {
         $unit = Unit::where('business_id', $business_id)
             ->with(['sub_units'])
@@ -593,6 +593,18 @@ class Util
         if (! empty($product_id)) {
             $product = Product::where('business_id', $business_id)->findOrFail($product_id);
             $related_sub_units = $product->sub_unit_ids;
+
+            // Context-specific narrowing: a product can restrict the
+            // units offered when selling vs purchasing (e.g. sell a
+            // medicine in Strip/Tablet only, purchase in Baby Box
+            // only). An empty context list means no extra
+            // restriction and the generic sub_unit_ids whitelist
+            // applies as before.
+            if ($context == 'sell' && ! empty($product->sell_sub_unit_ids)) {
+                $related_sub_units = $product->sell_sub_unit_ids;
+            } elseif ($context == 'purchase' && ! empty($product->purchase_sub_unit_ids)) {
+                $related_sub_units = $product->purchase_sub_unit_ids;
+            }
         }
 
         $sub_units = [];
@@ -626,6 +638,33 @@ class Util
         }
 
         return $sub_units;
+    }
+
+    /**
+     * Converts a purchase line's quantity/price fields (stored in
+     * base units) into the given sub-unit's terms for display in the
+     * purchase entry row — used when pulling purchase-order or
+     * requisition lines into a purchase so the row is consistent
+     * with the pre-selected unit and re-multiplies correctly on save.
+     *
+     * @param  \App\PurchaseLine  $purchase_line
+     * @param  float  $multiplier
+     * @return \App\PurchaseLine
+     */
+    public function convertPurchaseLineToSubUnit($purchase_line, $multiplier)
+    {
+        if (empty($multiplier) || $multiplier == 1) {
+            return $purchase_line;
+        }
+
+        $purchase_line->quantity = $purchase_line->quantity / $multiplier;
+        $purchase_line->po_quantity_purchased = $purchase_line->po_quantity_purchased / $multiplier;
+        $purchase_line->pp_without_discount = $purchase_line->pp_without_discount * $multiplier;
+        $purchase_line->purchase_price = $purchase_line->purchase_price * $multiplier;
+        $purchase_line->purchase_price_inc_tax = $purchase_line->purchase_price_inc_tax * $multiplier;
+        $purchase_line->item_tax = $purchase_line->item_tax * $multiplier;
+
+        return $purchase_line;
     }
 
     public function getMultiplierOf2Units($base_unit_id, $unit_id)

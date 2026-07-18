@@ -542,6 +542,7 @@ class ProductUtil extends Util
             'units.short_name as unit',
             'units.id as unit_id',
             'units.allow_decimal as unit_allow_decimal',
+            'p.default_sell_sub_unit_id',
             'u.short_name as second_unit',
             'brands.name as brand',
             DB::raw('(SELECT purchase_price_inc_tax FROM purchase_lines WHERE 
@@ -1210,6 +1211,18 @@ class ProductUtil extends Util
         $updated_purchase_line_ids = [0];
         $exchange_rate = ! empty($transaction->exchange_rate) ? $transaction->exchange_rate : 1;
 
+        // Preload per-product unit rules once for the purchasable-unit
+        // whitelist check below.
+        $product_unit_rules = collect();
+        if (in_array($transaction->type, ['purchase', 'purchase_order'])) {
+            $line_product_ids = array_filter(array_unique(array_column($input_data, 'product_id')));
+            if (! empty($line_product_ids)) {
+                $product_unit_rules = Product::whereIn('id', $line_product_ids)
+                    ->get(['id', 'name', 'unit_id', 'purchase_sub_unit_ids'])
+                    ->keyBy('id');
+            }
+        }
+
         foreach ($input_data as $data) {
             $multiplier = 1;
             if (isset($data['sub_unit_id']) && $data['sub_unit_id'] == $data['product_unit_id']) {
@@ -1219,6 +1232,28 @@ class ProductUtil extends Util
             if (! empty($data['sub_unit_id'])) {
                 $unit = Unit::find($data['sub_unit_id']);
                 $multiplier = ! empty($unit->base_unit_multiplier) ? $unit->base_unit_multiplier : 1;
+            }
+
+            // Enforce the product's purchasable-units whitelist
+            // (products.purchase_sub_unit_ids) on newly added lines,
+            // e.g. tablet medicine must be purchased in Baby Box
+            // only. Existing lines are left untouched so historical
+            // purchases stay editable.
+            if (in_array($transaction->type, ['purchase', 'purchase_order'])
+                && empty($data['purchase_line_id'])
+                && ! empty($data['product_id'])
+                && ! empty($product_unit_rules[$data['product_id']])) {
+                $rule = $product_unit_rules[$data['product_id']];
+                if (! empty($rule->purchase_sub_unit_ids)) {
+                    $line_unit_id = ! empty($data['sub_unit_id']) ? $data['sub_unit_id'] : $rule->unit_id;
+                    if (! in_array((int) $line_unit_id, array_map('intval', $rule->purchase_sub_unit_ids), true)) {
+                        $line_unit = Unit::find($line_unit_id);
+                        throw new \Exception(__('lang_v1.unit_not_allowed_for_purchasing', [
+                            'unit' => $line_unit->actual_name ?? $line_unit_id,
+                            'product' => $rule->name,
+                        ]));
+                    }
+                }
             }
             $new_quantity = $this->num_uf($data['quantity']) * $multiplier;
 
@@ -1387,6 +1422,40 @@ class ProductUtil extends Util
      * @param  int  $business_id
      * @return array
      */
+    /**
+     * Re-derives the base_unit_multiplier of posted sell lines from
+     * the units table instead of trusting the client-supplied value.
+     * A tampered or stale multiplier would otherwise skew both the
+     * per-base-unit price normalisation and the stock decrement.
+     *
+     * @param  array  $products  posted sell lines
+     * @return array same lines with base_unit_multiplier corrected
+     */
+    public function normalizeSellLineMultipliers($products)
+    {
+        foreach ($products as $key => $product) {
+            if (! isset($product['sub_unit_id'])) {
+                continue;
+            }
+
+            if (empty($product['sub_unit_id'])
+                || (isset($product['product_unit_id']) && $product['sub_unit_id'] == $product['product_unit_id'])) {
+                // Base unit selected — multiplier is always 1.
+                if (isset($product['base_unit_multiplier'])) {
+                    $products[$key]['base_unit_multiplier'] = 1;
+                }
+                continue;
+            }
+
+            $sub_unit = Unit::find($product['sub_unit_id']);
+            $products[$key]['base_unit_multiplier'] = (! empty($sub_unit) && ! empty($sub_unit->base_unit_multiplier))
+                ? $sub_unit->base_unit_multiplier
+                : 1;
+        }
+
+        return $products;
+    }
+
     public function changePurchaseLineUnit($purchase_line, $business_id)
     {
         $base_unit = $purchase_line->product->unit;
@@ -2542,7 +2611,7 @@ class ProductUtil extends Util
 
         $product->formatted_qty_available = $this->num_f($product->qty_available, false, null, true);
 
-        $sub_units = $this->getSubUnits($business_id, $product->unit_id, false, $product->product_id);
+        $sub_units = $this->getSubUnits($business_id, $product->unit_id, false, $product->product_id, 'sell');
 
         //Get customer group and change the price accordingly
         $customer_id = request()->get('customer_id', null);

@@ -555,6 +555,24 @@ class ProductController extends Controller
                 ? (int) $default_purchase
                 : null;
 
+            // Sellable / purchasable unit whitelists. Each entry must
+            // be the product's own unit or one of its sub_unit_ids;
+            // anything else is silently dropped. When a whitelist is
+            // set, the matching default must live inside it.
+            $allowed_unit_ids_int = array_map('intval', $allowed_unit_ids);
+
+            $sell_units = array_values(array_intersect(array_map('intval', (array) $request->input('sell_sub_unit_ids', [])), $allowed_unit_ids_int));
+            $product_details['sell_sub_unit_ids'] = ! empty($sell_units) ? $sell_units : null;
+            if (! empty($sell_units) && ! in_array((int) $product_details['default_sell_sub_unit_id'], $sell_units, true)) {
+                $product_details['default_sell_sub_unit_id'] = null;
+            }
+
+            $purchase_units = array_values(array_intersect(array_map('intval', (array) $request->input('purchase_sub_unit_ids', [])), $allowed_unit_ids_int));
+            $product_details['purchase_sub_unit_ids'] = ! empty($purchase_units) ? $purchase_units : null;
+            if (! empty($purchase_units) && ! in_array((int) $product_details['default_purchase_sub_unit_id'], $purchase_units, true)) {
+                $product_details['default_purchase_sub_unit_id'] = null;
+            }
+
             if (empty($product_details['sku'])) {
                 $product_details['sku'] = ' ';
             }
@@ -900,6 +918,19 @@ class ProductController extends Controller
             $product->default_purchase_sub_unit_id = (! empty($default_purchase) && in_array((int) $default_purchase, $allowed_unit_ids, true))
                 ? (int) $default_purchase
                 : null;
+
+            // Sellable / purchasable unit whitelists (see store()).
+            $sell_units = array_values(array_intersect(array_map('intval', (array) $request->input('sell_sub_unit_ids', [])), $allowed_unit_ids));
+            $product->sell_sub_unit_ids = ! empty($sell_units) ? $sell_units : null;
+            if (! empty($sell_units) && ! in_array((int) $product->default_sell_sub_unit_id, $sell_units, true)) {
+                $product->default_sell_sub_unit_id = null;
+            }
+
+            $purchase_units = array_values(array_intersect(array_map('intval', (array) $request->input('purchase_sub_unit_ids', [])), $allowed_unit_ids));
+            $product->purchase_sub_unit_ids = ! empty($purchase_units) ? $purchase_units : null;
+            if (! empty($purchase_units) && ! in_array((int) $product->default_purchase_sub_unit_id, $purchase_units, true)) {
+                $product->default_purchase_sub_unit_id = null;
+            }
 
             $expiry_enabled = $request->session()->get('business.enable_product_expiry');
             if (! empty($expiry_enabled)) {

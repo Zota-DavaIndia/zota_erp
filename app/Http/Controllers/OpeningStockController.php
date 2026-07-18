@@ -82,6 +82,7 @@ class OpeningStockController extends Controller
                     $purchase_lines[$purchase_line->variation_id][$k]['exp_date'] = $purchase_line->exp_date;
                     $purchase_lines[$purchase_line->variation_id][$k]['lot_number'] = $purchase_line->lot_number;
                     $purchase_lines[$purchase_line->variation_id][$k]['transaction_date'] = $this->productUtil->format_date($transaction->transaction_date, true);
+                    $purchase_lines[$purchase_line->variation_id][$k]['sub_unit_id'] = $purchase_line->sub_unit_id;
 
                     $purchase_lines[$purchase_line->variation_id][$k]['purchase_line_note'] = $transaction->additional_notes;
                     $purchase_lines[$purchase_line->variation_id][$k]['location_id'] = $transaction->location_id;
@@ -108,6 +109,17 @@ class OpeningStockController extends Controller
             $enable_expiry = request()->session()->get('business.enable_product_expiry');
             $enable_lot = request()->session()->get('business.enable_lot_number');
 
+            // Sub-units (purchase context) for the product so the
+            // opening-stock row can let the user record stock in
+            // e.g. Baby Box instead of forcing the raw base unit.
+            $sub_units = $this->productUtil->getSubUnits(
+                $business_id,
+                $product->unit_id,
+                false,
+                $product->id,
+                'purchase'
+            );
+
             if (request()->ajax()) {
                 return view('opening_stock.ajax_add')
                     ->with(compact(
@@ -115,7 +127,8 @@ class OpeningStockController extends Controller
                         'locations',
                         'purchases',
                         'enable_expiry',
-                        'enable_lot'
+                        'enable_lot',
+                        'sub_units'
                     ));
             }
 
@@ -125,7 +138,8 @@ class OpeningStockController extends Controller
                         'locations',
                         'purchases',
                         'enable_expiry',
-                        'enable_lot'
+                        'enable_lot',
+                        'sub_units'
                     ));
         }
     }
@@ -185,6 +199,23 @@ class OpeningStockController extends Controller
                                 $qty_remaining = $this->productUtil->num_uf(trim($pl['quantity']));
                                 $secondary_unit_quantity = isset($pl['secondary_unit_quantity']) ? $this->productUtil->num_uf(trim($pl['secondary_unit_quantity'])) : 0;
 
+                                // If the line was entered in a sub-unit (e.g.
+                                // Baby Box), convert qty to base units and
+                                // price-per-base-unit for storage. The
+                                // units table is the source of truth.
+                                $sub_unit_id = ! empty($pl['sub_unit_id']) ? $pl['sub_unit_id'] : null;
+                                $sub_unit_multiplier = 1;
+                                if (! empty($sub_unit_id)) {
+                                    $sub_unit = \App\Unit::find($sub_unit_id);
+                                    $sub_unit_multiplier = (! empty($sub_unit) && ! empty($sub_unit->base_unit_multiplier))
+                                        ? $sub_unit->base_unit_multiplier
+                                        : 1;
+                                    $qty_remaining = $qty_remaining * $sub_unit_multiplier;
+                                    $purchase_price = $purchase_price / $sub_unit_multiplier;
+                                    $item_tax = $this->productUtil->calc_percentage($purchase_price, $tax_percent);
+                                    $purchase_price_inc_tax = $purchase_price + $item_tax;
+                                }
+
                                 $exp_date = null;
                                 if (! empty($pl['exp_date'])) {
                                     $exp_date = $this->productUtil->uf_date($pl['exp_date']);
@@ -232,6 +263,7 @@ class OpeningStockController extends Controller
                                     $purchase_line->exp_date = $exp_date;
                                     $purchase_line->lot_number = $lot_number;
                                     $purchase_line->secondary_unit_quantity = $secondary_unit_quantity;
+                                    $purchase_line->sub_unit_id = $sub_unit_id;
                                 }
 
                                 if (! empty($purchase_line->transaction_id)) {

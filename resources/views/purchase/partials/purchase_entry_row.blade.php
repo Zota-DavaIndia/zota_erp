@@ -63,25 +63,45 @@
             <input type="hidden" name="purchases[{{$row_count}}][product_unit_id]" value="{{$product->unit->id}}">
             @if(!empty($sub_units))
                 @php
-                    // Pre-select the per-product default purchase sub-unit
-                    // (e.g. Baby Box when the supplier always delivers in
-                    // baby boxes). Falls back to the existing
-                    // $purchase_line->sub_unit_id (for re-opens) and then
-                    // to the first sub-unit in the list.
+                    // Pre-select the unit of the line being pulled in
+                    // (purchase order / requisition lines are converted
+                    // into their sub-unit's terms by the controller, so
+                    // the pre-selected unit and the rendered quantity/
+                    // prices are consistent). Falls back to the
+                    // per-product default purchase sub-unit (e.g. Baby
+                    // Box when the supplier always delivers in baby
+                    // boxes) and then to the first unit in the list.
+                    // Imported CSV rows keep the first (base) unit —
+                    // their quantities/costs are raw from the file.
+                    $_line_obj = null;
+                    if (!empty($purchase_order_line)) {
+                        $_line_obj = $purchase_order_line;
+                    } elseif (!empty($purchase_requisition_line)) {
+                        $_line_obj = $purchase_requisition_line;
+                    } elseif (!empty($purchase_line)) {
+                        $_line_obj = $purchase_line;
+                    }
+
                     $_preselect_purchase = null;
-                    if (!empty($purchase_line) && !empty($purchase_line->sub_unit_id) && isset($sub_units[$purchase_line->sub_unit_id])) {
-                        $_preselect_purchase = $purchase_line->sub_unit_id;
-                    } elseif (!empty($product->default_purchase_sub_unit_id) && isset($sub_units[$product->default_purchase_sub_unit_id])) {
+                    if (!empty($_line_obj) && !empty($_line_obj->sub_unit_id) && isset($sub_units[$_line_obj->sub_unit_id])) {
+                        $_preselect_purchase = $_line_obj->sub_unit_id;
+                    } elseif (empty($imported_data) && !empty($product->default_purchase_sub_unit_id) && isset($sub_units[$product->default_purchase_sub_unit_id])) {
                         $_preselect_purchase = $product->default_purchase_sub_unit_id;
                     } else {
                         $_first = array_key_first($sub_units);
                         $_preselect_purchase = ($_first !== null) ? $_first : null;
                     }
+
+                    // Rows whose prices were prefilled from a negotiated
+                    // source (PO lines, imported CSV costs) must not have
+                    // them recomputed from the product's default price
+                    // when the pre-selected unit is applied on insert.
+                    $_skip_price_sync = (!empty($purchase_order_line) || !empty($imported_data)) ? 1 : 0;
                 @endphp
                 <br>
-                <select name="purchases[{{$row_count}}][sub_unit_id]" class="form-control input-sm sub_unit">
+                <select name="purchases[{{$row_count}}][sub_unit_id]" class="form-control input-sm sub_unit" @if($_skip_price_sync) data-skip_price_sync="1" @endif>
                     @foreach($sub_units as $key => $value)
-                        <option value="{{$key}}" data-multiplier="{{$value['multiplier']}}" @if($_preselect_purchase == $key) selected @endif>
+                        <option value="{{$key}}" data-multiplier="{{$value['multiplier']}}" data-allow_decimal="{{$value['allow_decimal']}}" @if($_preselect_purchase == $key) selected @endif>
                             {{$value['name']}}
                         </option>
                     @endforeach
@@ -124,8 +144,17 @@
             number_format($pp_without_discount, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm purchase_unit_cost_without_discount input_number', 'required']); !!}
 
             @if(!empty($last_purchase_line))
+                @php
+                    // The stored last-purchase price is per BASE unit;
+                    // scale it to the pre-selected sub-unit so the hint
+                    // is comparable with the cost input beside it.
+                    $_prev_price_multiplier = 1;
+                    if (!empty($sub_units) && isset($_preselect_purchase) && isset($sub_units[$_preselect_purchase])) {
+                        $_prev_price_multiplier = $sub_units[$_preselect_purchase]['multiplier'] ?? 1;
+                    }
+                @endphp
                 <br>
-                <small class="text-muted">@lang('lang_v1.prev_unit_price'): @format_currency($last_purchase_line->pp_without_discount)</small>
+                <small class="text-muted">@lang('lang_v1.prev_unit_price'): <span class="prev_unit_price_display" data-base_price="{{$last_purchase_line->pp_without_discount}}">@format_currency($last_purchase_line->pp_without_discount * $_prev_price_multiplier)</span></small>
             @endif
         </td>
         <td class="add_without_price_hide">

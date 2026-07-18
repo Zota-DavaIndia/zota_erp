@@ -393,6 +393,14 @@ class BusinessUtil extends Util
         //Disable inline tax editing
         $business_details['enable_inline_tax'] = 0;
 
+        // Multi-unit selling/purchasing (base unit + sub-units, e.g.
+        // Tablet / Strip / Baby Box) is central to this chain's
+        // workflow, and master products synced into a new store carry
+        // sub-unit configuration. Enable it from day one so the
+        // product forms show the sub-unit fields without manual
+        // per-store setup.
+        $business_details['enable_sub_units'] = $business_details['enable_sub_units'] ?? 1;
+
         $business = Business::create_business($business_details);
 
         return $business;
