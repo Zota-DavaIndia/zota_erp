@@ -136,6 +136,67 @@
             </div>
         </div>
 
+        <div class="col-sm-4">
+            <div class="form-group">
+                {!! Form::label('hsn_code', __('lang_v1.hsn_code') . ':') !!}
+                {!! Form::text('hsn_code', !empty($duplicate_product->hsn_code) ? $duplicate_product->hsn_code : null, ['class' => 'form-control', 'placeholder' => __('lang_v1.hsn_code')]); !!}
+            </div>
+        </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                {!! Form::label('drug_schedule', __('lang_v1.drug_schedule') . ':') !!}
+                {!! Form::select('drug_schedule', $drug_schedules, !empty($duplicate_product->drug_schedule) ? $duplicate_product->drug_schedule : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+            </div>
+        </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                {!! Form::label('dosage_form', __('lang_v1.dosage_form') . ':') !!}
+                {!! Form::select('dosage_form', $dosage_forms, !empty($duplicate_product->dosage_form) ? $duplicate_product->dosage_form : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+            </div>
+        </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                {!! Form::label('storage_condition', __('lang_v1.storage_condition') . ':') !!}
+                {!! Form::select('storage_condition', $storage_conditions, !empty($duplicate_product->storage_condition) ? $duplicate_product->storage_condition : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+            </div>
+        </div>
+
+        <div class="clearfix"></div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                {!! Form::label('manufacturer_id', __('lang_v1.manufacturer') . ':') !!}
+                <div class="input-group">
+                    {!! Form::select('manufacturer_id', $manufacturers, !empty($duplicate_product->manufacturer_id) ? $duplicate_product->manufacturer_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                    <span class="input-group-btn">
+                        <button type="button" @if(!auth()->user()->can('brand.create')) disabled @endif class="btn btn-default bg-white btn-flat btn-modal" data-href="{{action([\App\Http\Controllers\ManufacturerController::class, 'create'], ['quick_add' => true])}}" title="@lang('lang_v1.add_manufacturer')" data-container=".view_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                {!! Form::label('division_id', __('lang_v1.division') . ':') !!}
+                <div class="input-group">
+                    {!! Form::select('division_id', $divisions, !empty($duplicate_product->division_id) ? $duplicate_product->division_id : null, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                    <span class="input-group-btn">
+                        <button type="button" @if(!auth()->user()->can('brand.create')) disabled @endif class="btn btn-default bg-white btn-flat btn-modal" data-href="{{action([\App\Http\Controllers\DivisionController::class, 'create'], ['quick_add' => true])}}" title="@lang('lang_v1.add_division')" data-container=".view_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                {!! Form::label('product_tags', __('lang_v1.tags') . ':') !!}
+                {!! Form::select('product_tags[]', [], null, ['class' => 'form-control select2', 'multiple', 'id' => 'product_tags', 'data-tags' => 'true', 'data-placeholder' => __('lang_v1.tags_placeholder')]); !!}
+            </div>
+        </div>
+
         @php
         $default_location = null;
         if(count($business_locations) == 1){
@@ -160,6 +221,45 @@
                 </label>@show_tooltip(__('tooltip.enable_stock')) <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
             </div>
         </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                <br>
+                <label>
+                    {!! Form::checkbox('prescription_required', 1, !empty($duplicate_product) ? $duplicate_product->prescription_required : false, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.prescription_required')</strong>
+                </label>
+            </div>
+        </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                <br>
+                <label>
+                    {!! Form::checkbox('can_be_purchased', 1, !empty($duplicate_product) ? $duplicate_product->can_be_purchased : true, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.can_be_purchased')</strong>
+                </label>
+            </div>
+        </div>
+
+        <div class="clearfix"></div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                <br>
+                <label>
+                    {!! Form::checkbox('can_be_stored', 1, !empty($duplicate_product) ? $duplicate_product->can_be_stored : true, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.can_be_stored')</strong>
+                </label>
+            </div>
+        </div>
+
+        <div class="col-sm-4">
+            <div class="form-group">
+                <br>
+                <label>
+                    {!! Form::checkbox('can_be_sold', 1, !empty($duplicate_product) ? $duplicate_product->can_be_sold : true, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.can_be_sold')</strong>
+                </label>
+            </div>
+        </div>
+
         <div class="col-sm-4 @if(!empty($duplicate_product) && $duplicate_product->enable_stock == 0) hide @endif" id="alert_quantity_div">
             <div class="form-group">
                 {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!} @show_tooltip(__('tooltip.alert_quantity'))

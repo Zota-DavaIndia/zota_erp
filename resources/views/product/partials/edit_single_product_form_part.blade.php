@@ -20,6 +20,9 @@
           <th>@lang('product.default_purchase_price')</th>
           <th>@lang('product.profit_percent') @show_tooltip(__('tooltip.profit_percent'))</th>
           <th>@lang('product.default_selling_price')</th>
+          <th>@lang('lang_v1.mrp_inc_tax')</th>
+          <th>@lang('lang_v1.ptr')</th>
+          <th>@lang('lang_v1.pts')</th>
           <th>@lang('lang_v1.product_image')</th>
         </tr>
         @foreach($product_deatails->variations as $variation )
@@ -54,6 +57,18 @@
                         {!! Form::text('single_dsp', @num_format($variation->default_sell_price), ['class' => 'form-control input-sm dsp input_number', 'placeholder' => __('product.exc_of_tax'), 'id' => 'single_dsp', 'required']); !!}
 
                         {!! Form::text('single_dsp_inc_tax', @num_format($variation->sell_price_inc_tax), ['class' => 'form-control input-sm hide input_number', 'placeholder' => __('product.inc_of_tax'), 'id' => 'single_dsp_inc_tax', 'required']); !!}
+                    </td>
+                    <td>
+                        <br/>
+                        {!! Form::text('single_mrp_inc_tax', @num_format($variation->mrp_inc_tax), ['class' => 'form-control input-sm input_number', 'placeholder' => __('lang_v1.mrp_inc_tax'), 'id' => 'single_mrp_inc_tax']); !!}
+                    </td>
+                    <td>
+                        <br/>
+                        {!! Form::text('single_ptr', @num_format($variation->ptr), ['class' => 'form-control input-sm input_number', 'placeholder' => __('lang_v1.ptr'), 'id' => 'single_ptr']); !!}
+                    </td>
+                    <td>
+                        <br/>
+                        {!! Form::text('single_pts', @num_format($variation->pts), ['class' => 'form-control input-sm input_number', 'placeholder' => __('lang_v1.pts'), 'id' => 'single_pts']); !!}
                     </td>
                     <td>
                         @php 

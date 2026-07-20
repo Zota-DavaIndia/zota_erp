@@ -7,6 +7,8 @@ use App\Business;
 use App\BusinessLocation;
 use App\Category;
 use App\Exports\ProductsExport;
+use App\Division;
+use App\Manufacturer;
 use App\Media;
 use App\Product;
 use App\ProductVariation;
@@ -109,6 +111,7 @@ class ProductController extends Controller
 
             $query = Product::with(['media'])
                 ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
+                ->leftJoin('manufacturers', 'products.manufacturer_id', '=', 'manufacturers.id')
                 ->join('units', 'products.unit_id', '=', 'units.id')
                 ->leftJoin('categories as c1', 'products.category_id', '=', 'c1.id')
                 ->leftJoin('categories as c2', 'products.sub_category_id', '=', 'c2.id')
@@ -150,6 +153,7 @@ class ProductController extends Controller
                 'c2.name as sub_category',
                 'units.actual_name as unit',
                 'brands.name as brand',
+                'manufacturers.name as manufacturer',
                 'tax_rates.name as tax',
                 'products.sku',
                 'products.image',
@@ -163,11 +167,19 @@ class ProductController extends Controller
                 'products.product_custom_field16', 'products.product_custom_field17', 'products.product_custom_field18', 
                 'products.product_custom_field19', 'products.product_custom_field20',
                 'products.alert_quantity',
+                'products.hsn_code',
+                'products.drug_schedule',
+                'products.prescription_required',
+                'products.dosage_form',
                 DB::raw('SUM(vld.qty_available) as current_stock'),
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
                 DB::raw('MIN(v.sell_price_inc_tax) as min_price'),
                 DB::raw('MAX(v.dpp_inc_tax) as max_purchase_price'),
-                DB::raw('MIN(v.dpp_inc_tax) as min_purchase_price')
+                DB::raw('MIN(v.dpp_inc_tax) as min_purchase_price'),
+                DB::raw('MAX(v.mrp_inc_tax) as mrp'),
+                DB::raw('MAX(vld.movement_tag) as movement_tag'),
+                DB::raw('SUM(vld.min_quantity) as total_min_quantity'),
+                DB::raw('SUM(vld.max_quantity) as total_max_quantity')
                 );
 
             //if woocomerce enabled add field to query
@@ -343,6 +355,48 @@ class ProductController extends Controller
                     'selling_price',
                     '<div style="white-space: nowrap;">@format_currency($min_price) @if($max_price != $min_price && $type == "variable") -  @format_currency($max_price)@endif </div>'
                 )
+                ->addColumn('mrp_display', function ($row) {
+                    if (empty($row->mrp) || $row->mrp == 0) {
+                        return '<span class="text-muted">-</span>';
+                    }
+
+                    return '<span class="mrp_display" data-orig-value="'.$row->mrp.'">'.number_format($row->mrp, 2).'</span>';
+                })
+                ->addColumn('drug_schedule_display', function ($row) {
+                    if (empty($row->drug_schedule)) {
+                        return '<span class="text-muted">-</span>';
+                    }
+                    $badge = $row->prescription_required ? 'label-danger' : 'label-info';
+
+                    return '<span class="label '.$badge.'">'.e($row->drug_schedule).'</span>'.
+                        ($row->prescription_required ? ' <i class="fas fa-prescription text-danger" title="'.__('lang_v1.prescription_required').'"></i>' : '');
+                })
+                ->addColumn('movement_tag_display', function ($row) {
+                    if (empty($row->movement_tag)) {
+                        return '<span class="text-muted">-</span>';
+                    }
+                    $badge_map = [
+                        'SFM' => 'label-success',
+                        'FM' => 'label-info',
+                        'NFM' => 'label-warning',
+                        'SM' => 'label-danger',
+                    ];
+                    $badge = $badge_map[$row->movement_tag] ?? 'label-default';
+
+                    return '<span class="label '.$badge.'">'.$row->movement_tag.'</span>';
+                })
+                ->addColumn('stock_min_max', function ($row) {
+                    if (! $row->enable_stock) {
+                        return '--';
+                    }
+                    $min = (int) $row->total_min_quantity;
+                    $max = (int) $row->total_max_quantity;
+                    if ($min == 0 && $max == 0) {
+                        return '<span class="text-muted">-</span>';
+                    }
+
+                    return '<span class="text-info">'.$min.'</span> / <span class="text-primary">'.$max.'</span>';
+                })
                 ->filterColumn('products.sku', function ($query, $keyword) {
                     $query->whereHas('variations', function ($q) use ($keyword) {
                         $q->where('sub_sku', 'like', "%{$keyword}%");
@@ -357,7 +411,7 @@ class ProductController extends Controller
                             return '';
                         }
                     }, ])
-                ->rawColumns(['action', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'current_stock'])
+                ->rawColumns(['action', 'image', 'mass_delete', 'product', 'selling_price', 'purchase_price', 'category', 'current_stock', 'mrp_display', 'drug_schedule_display', 'movement_tag_display', 'stock_min_max'])
                 ->make(true);
         }
 
@@ -474,8 +528,14 @@ class ProductController extends Controller
         //product screen view from module
         $pos_module_data = $this->moduleUtil->getModuleData('get_product_screen_top_view');
 
+        $drug_schedules = $this->drug_schedules();
+        $dosage_forms = $this->dosage_forms();
+        $storage_conditions = $this->storage_conditions();
+        $manufacturers = Manufacturer::forDropdown($business_id);
+        $divisions = Division::forDropdown($business_id);
+
         return view('product.create')
-            ->with(compact('categories', 'brands', 'units', 'taxes', 'barcode_types', 'default_profit_percent', 'tax_attributes', 'barcode_default', 'business_locations', 'duplicate_product', 'sub_categories', 'rack_details', 'selling_price_group_count', 'module_form_parts', 'product_types', 'common_settings', 'warranties', 'pos_module_data', 'compositions'));
+            ->with(compact('categories', 'brands', 'units', 'taxes', 'barcode_types', 'default_profit_percent', 'tax_attributes', 'barcode_default', 'business_locations', 'duplicate_product', 'sub_categories', 'rack_details', 'selling_price_group_count', 'module_form_parts', 'product_types', 'common_settings', 'warranties', 'pos_module_data', 'compositions', 'drug_schedules', 'dosage_forms', 'storage_conditions', 'manufacturers', 'divisions'));
     }
 
     private function product_types()
@@ -485,6 +545,136 @@ class ProductController extends Controller
             'variable' => __('lang_v1.variable'),
             'combo' => __('lang_v1.combo'),
         ];
+    }
+
+    private function drug_schedules()
+    {
+        return [
+            'H' => __('lang_v1.schedule_h'),
+            'H1' => __('lang_v1.schedule_h1'),
+            'X' => __('lang_v1.schedule_x'),
+            'G' => __('lang_v1.schedule_g'),
+            'J' => __('lang_v1.schedule_j'),
+            'OTC' => __('lang_v1.otc'),
+        ];
+    }
+
+    private function dosage_forms()
+    {
+        return [
+            'tablet' => __('lang_v1.tablet'),
+            'capsule' => __('lang_v1.capsule'),
+            'syrup' => __('lang_v1.syrup'),
+            'injection' => __('lang_v1.injection'),
+            'drops' => __('lang_v1.drops'),
+            'cream' => __('lang_v1.cream'),
+            'ointment' => __('lang_v1.ointment'),
+            'gel' => __('lang_v1.gel'),
+            'powder' => __('lang_v1.powder'),
+            'inhaler' => __('lang_v1.inhaler'),
+            'spray' => __('lang_v1.spray'),
+            'suspension' => __('lang_v1.suspension'),
+            'suppository' => __('lang_v1.suppository'),
+            'patch' => __('lang_v1.patch'),
+            'solution' => __('lang_v1.solution'),
+            'lotion' => __('lang_v1.lotion'),
+            'sachet' => __('lang_v1.sachet'),
+        ];
+    }
+
+    private function storage_conditions()
+    {
+        return [
+            'room_temperature' => __('lang_v1.room_temperature'),
+            'below_25c' => __('lang_v1.below_25c'),
+            'refrigerate_2_8c' => __('lang_v1.refrigerate_2_8c'),
+            'cool_dry_place' => __('lang_v1.cool_dry_place'),
+            'protect_from_light' => __('lang_v1.protect_from_light'),
+            'freeze' => __('lang_v1.freeze'),
+        ];
+    }
+
+    public function movementAnalysis()
+    {
+        if (! auth()->user()->can('product.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+        $permitted_locations = auth()->user()->permitted_locations();
+        if ($permitted_locations !== 'all' && empty($permitted_locations)) {
+            $permitted_locations = BusinessLocation::where('business_id', $business_id)->pluck('id')->all();
+        }
+
+        $query = Product::leftJoin('manufacturers', 'products.manufacturer_id', '=', 'manufacturers.id')
+            ->join('variations as v', 'v.product_id', '=', 'products.id')
+            ->leftJoin('variation_location_details as vld', function ($join) use ($permitted_locations) {
+                $join->on('vld.variation_id', '=', 'v.id');
+                if ($permitted_locations != 'all') {
+                    $join->whereIn('vld.location_id', $permitted_locations);
+                }
+            })
+            ->whereNull('v.deleted_at')
+            ->where('products.business_id', $business_id)
+            ->where('products.type', '!=', 'modifier')
+            ->where('products.enable_stock', 1)
+            ->whereNotNull('vld.movement_tag');
+
+        $location_id = request()->get('location_id', null);
+        if (! empty($location_id) && $location_id != 'none') {
+            $query->where('vld.location_id', $location_id);
+        }
+
+        $movement_tag = request()->get('movement_tag', null);
+        if (! empty($movement_tag)) {
+            $query->where('vld.movement_tag', $movement_tag);
+        }
+
+        $products = $query->select(
+            'products.id',
+            'products.name as product',
+            'products.sku',
+            'manufacturers.name as manufacturer',
+            DB::raw('SUM(vld.qty_available) as current_stock'),
+            DB::raw('SUM(vld.min_quantity) as stock_min'),
+            DB::raw('SUM(vld.max_quantity) as stock_max'),
+            DB::raw('MAX(vld.movement_tag) as movement_tag'),
+            DB::raw('MAX(vld.last_auto_update_at) as last_updated')
+        )->groupBy('products.id');
+
+        return Datatables::of($products)
+            ->addColumn('movement_tag_display', function ($row) {
+                $badge_map = [
+                    'SFM' => 'label-success',
+                    'FM' => 'label-info',
+                    'NFM' => 'label-warning',
+                    'SM' => 'label-danger',
+                ];
+                $badge = $badge_map[$row->movement_tag] ?? 'label-default';
+
+                return '<span class="label '.$badge.'">'.$row->movement_tag.'</span>';
+            })
+            ->editColumn('current_stock', function ($row) {
+                return '<span data-is_quantity="true" class="current_stock" data-orig-value="'.(float) $row->current_stock.'">'.$this->productUtil->num_f($row->current_stock, false, null, true).'</span>';
+            })
+            ->editColumn('stock_min', function ($row) {
+                return (int) $row->stock_min;
+            })
+            ->editColumn('stock_max', function ($row) {
+                return (int) $row->stock_max;
+            })
+            ->editColumn('last_updated', function ($row) {
+                return ! empty($row->last_updated) ? \Carbon\Carbon::parse($row->last_updated)->format('d/m/Y') : '-';
+            })
+            ->addColumn('next_update', function ($row) {
+                if (! empty($row->last_updated)) {
+                    return \Carbon\Carbon::parse($row->last_updated)->addDays(90)->format('d/m/Y');
+                }
+
+                return '-';
+            })
+            ->rawColumns(['movement_tag_display', 'current_stock'])
+            ->make(true);
     }
 
     /**
@@ -503,7 +693,7 @@ class ProductController extends Controller
 
         try {
             $business_id = $request->session()->get('user.business_id');
-            $form_fields = ['name', 'brand_id', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_description', 'sub_unit_ids', 'preparation_time_in_minutes', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_custom_field5', 'product_custom_field6', 'product_custom_field7', 'product_custom_field8', 'product_custom_field9', 'product_custom_field10', 'product_custom_field11', 'product_custom_field12', 'product_custom_field13', 'product_custom_field14', 'product_custom_field15', 'product_custom_field16', 'product_custom_field17', 'product_custom_field18', 'product_custom_field19', 'product_custom_field20',];
+            $form_fields = ['name', 'brand_id', 'unit_id', 'category_id', 'tax', 'type', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_description', 'sub_unit_ids', 'preparation_time_in_minutes', 'hsn_code', 'drug_schedule', 'dosage_form', 'storage_condition', 'manufacturer_id', 'division_id', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_custom_field5', 'product_custom_field6', 'product_custom_field7', 'product_custom_field8', 'product_custom_field9', 'product_custom_field10', 'product_custom_field11', 'product_custom_field12', 'product_custom_field13', 'product_custom_field14', 'product_custom_field15', 'product_custom_field16', 'product_custom_field17', 'product_custom_field18', 'product_custom_field19', 'product_custom_field20',];
 
             $module_form_fields = $this->moduleUtil->getModuleFormField('product_form_fields');
             if (! empty($module_form_fields)) {
@@ -521,6 +711,14 @@ class ProductController extends Controller
 
             $product_details['enable_stock'] = (! empty($request->input('enable_stock')) && $request->input('enable_stock') == 1) ? 1 : 0;
             $product_details['not_for_selling'] = (! empty($request->input('not_for_selling')) && $request->input('not_for_selling') == 1) ? 1 : 0;
+            $product_details['prescription_required'] = (! empty($request->input('prescription_required')) && $request->input('prescription_required') == 1) ? 1 : 0;
+            $product_details['can_be_purchased'] = (! empty($request->input('can_be_purchased')) && $request->input('can_be_purchased') == 1) ? 1 : 0;
+            $product_details['can_be_stored'] = (! empty($request->input('can_be_stored')) && $request->input('can_be_stored') == 1) ? 1 : 0;
+            $product_details['can_be_sold'] = (! empty($request->input('can_be_sold')) && $request->input('can_be_sold') == 1) ? 1 : 0;
+
+            if (! empty($request->input('product_tags'))) {
+                $product_details['product_tags'] = implode(',', $request->input('product_tags'));
+            }
 
             if (! empty($request->input('sub_category_id'))) {
                 $product_details['sub_category_id'] = $request->input('sub_category_id');
@@ -617,6 +815,20 @@ class ProductController extends Controller
 
             if ($product->type == 'single') {
                 $this->productUtil->createSingleProductVariation($product->id, $product->sku, $request->input('single_dpp'), $request->input('single_dpp_inc_tax'), $request->input('profit_percent'), $request->input('single_dsp'), $request->input('single_dsp_inc_tax'));
+
+                $variation_pharmacy_data = [];
+                if ($request->has('single_mrp_inc_tax')) {
+                    $variation_pharmacy_data['mrp_inc_tax'] = $this->productUtil->num_uf($request->input('single_mrp_inc_tax'));
+                }
+                if ($request->has('single_ptr')) {
+                    $variation_pharmacy_data['ptr'] = $this->productUtil->num_uf($request->input('single_ptr'));
+                }
+                if ($request->has('single_pts')) {
+                    $variation_pharmacy_data['pts'] = $this->productUtil->num_uf($request->input('single_pts'));
+                }
+                if (! empty($variation_pharmacy_data)) {
+                    Variation::where('product_id', $product->id)->update($variation_pharmacy_data);
+                }
             } elseif ($product->type == 'variable') {
                 if (! empty($request->input('product_variation'))) {
                     $input_variations = $request->input('product_variation');
@@ -796,8 +1008,14 @@ class ProductController extends Controller
 
         $alert_quantity = ! is_null($product->alert_quantity) ? $this->productUtil->num_f($product->alert_quantity, false, null, true) : null;
 
+        $drug_schedules = $this->drug_schedules();
+        $dosage_forms = $this->dosage_forms();
+        $storage_conditions = $this->storage_conditions();
+        $manufacturers = Manufacturer::forDropdown($business_id);
+        $divisions = Division::forDropdown($business_id);
+
         return view('product.edit')
-                ->with(compact('categories', 'brands', 'units', 'sub_units', 'taxes', 'tax_attributes', 'barcode_types', 'product', 'sub_categories', 'default_profit_percent', 'business_locations', 'rack_details', 'selling_price_group_count', 'module_form_parts', 'product_types', 'common_settings', 'warranties', 'pos_module_data', 'alert_quantity', 'compositions'));
+                ->with(compact('categories', 'brands', 'units', 'sub_units', 'taxes', 'tax_attributes', 'barcode_types', 'product', 'sub_categories', 'default_profit_percent', 'business_locations', 'rack_details', 'selling_price_group_count', 'module_form_parts', 'product_types', 'common_settings', 'warranties', 'pos_module_data', 'alert_quantity', 'compositions', 'drug_schedules', 'dosage_forms', 'storage_conditions', 'manufacturers', 'divisions'));
     }
 
     /**
@@ -818,7 +1036,7 @@ class ProductController extends Controller
 
         try {
             $business_id = $session_business_id;
-            $product_details = $request->only(['name', 'brand_id', 'unit_id', 'category_id', 'tax', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_description', 'sub_unit_ids', 'preparation_time_in_minutes', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_custom_field5', 'product_custom_field6', 'product_custom_field7', 'product_custom_field8', 'product_custom_field9', 'product_custom_field10', 'product_custom_field11', 'product_custom_field12', 'product_custom_field13', 'product_custom_field14', 'product_custom_field15', 'product_custom_field16', 'product_custom_field17', 'product_custom_field18', 'product_custom_field19', 'product_custom_field20',]);
+            $product_details = $request->only(['name', 'brand_id', 'unit_id', 'category_id', 'tax', 'barcode_type', 'sku', 'alert_quantity', 'tax_type', 'weight', 'product_description', 'sub_unit_ids', 'preparation_time_in_minutes', 'hsn_code', 'drug_schedule', 'dosage_form', 'storage_condition', 'manufacturer_id', 'division_id', 'product_custom_field1', 'product_custom_field2', 'product_custom_field3', 'product_custom_field4', 'product_custom_field5', 'product_custom_field6', 'product_custom_field7', 'product_custom_field8', 'product_custom_field9', 'product_custom_field10', 'product_custom_field11', 'product_custom_field12', 'product_custom_field13', 'product_custom_field14', 'product_custom_field15', 'product_custom_field16', 'product_custom_field17', 'product_custom_field18', 'product_custom_field19', 'product_custom_field20',]);
 
             DB::beginTransaction();
 
@@ -885,6 +1103,19 @@ class ProductController extends Controller
             $product->warranty_id = ! empty($request->input('warranty_id')) ? $request->input('warranty_id') : null;
             $product->secondary_unit_id = ! empty($request->input('secondary_unit_id')) ? $request->input('secondary_unit_id') : null;
 
+            $product->hsn_code = $product_details['hsn_code'] ?? null;
+            $product->drug_schedule = $product_details['drug_schedule'] ?? null;
+            $product->dosage_form = $product_details['dosage_form'] ?? null;
+            $product->storage_condition = $product_details['storage_condition'] ?? null;
+            $product->manufacturer_id = ! empty($product_details['manufacturer_id']) ? $product_details['manufacturer_id'] : null;
+            $product->division_id = ! empty($product_details['division_id']) ? $product_details['division_id'] : null;
+
+            if (! empty($request->input('product_tags'))) {
+                $product->product_tags = implode(',', $request->input('product_tags'));
+            } else {
+                $product->product_tags = null;
+            }
+
             if (! empty($request->input('enable_stock')) && $request->input('enable_stock') == 1) {
                 $product->enable_stock = 1;
             } else {
@@ -892,6 +1123,10 @@ class ProductController extends Controller
             }
 
             $product->not_for_selling = (! empty($request->input('not_for_selling')) && $request->input('not_for_selling') == 1) ? 1 : 0;
+            $product->prescription_required = (! empty($request->input('prescription_required')) && $request->input('prescription_required') == 1) ? 1 : 0;
+            $product->can_be_purchased = (! empty($request->input('can_be_purchased')) && $request->input('can_be_purchased') == 1) ? 1 : 0;
+            $product->can_be_stored = (! empty($request->input('can_be_stored')) && $request->input('can_be_stored') == 1) ? 1 : 0;
+            $product->can_be_sold = (! empty($request->input('can_be_sold')) && $request->input('can_be_sold') == 1) ? 1 : 0;
 
             if (! empty($request->input('sub_category_id'))) {
                 $product->sub_category_id = $request->input('sub_category_id');
@@ -1006,6 +1241,15 @@ class ProductController extends Controller
                 $variation->profit_percent = $this->productUtil->num_uf($single_data['profit_percent']);
                 $variation->default_sell_price = $this->productUtil->num_uf($single_data['single_dsp']);
                 $variation->sell_price_inc_tax = $this->productUtil->num_uf($single_data['single_dsp_inc_tax']);
+                if ($request->has('single_mrp_inc_tax')) {
+                    $variation->mrp_inc_tax = $this->productUtil->num_uf($request->input('single_mrp_inc_tax'));
+                }
+                if ($request->has('single_ptr')) {
+                    $variation->ptr = $this->productUtil->num_uf($request->input('single_ptr'));
+                }
+                if ($request->has('single_pts')) {
+                    $variation->pts = $this->productUtil->num_uf($request->input('single_pts'));
+                }
                 $variation->save();
 
                 Media::uploadMedia($product->business_id, $variation, $request, 'variation_images');

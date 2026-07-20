@@ -712,6 +712,62 @@ $(document).on('submit', 'form#quick_add_brand_form', function(e) {
     });
 });
 
+$(document).on('submit', 'form#quick_add_manufacturer_form', function(e) {
+    e.preventDefault();
+    var form = $(this);
+    var data = form.serialize();
+
+    $.ajax({
+        method: 'POST',
+        url: $(this).attr('action'),
+        dataType: 'json',
+        data: data,
+        beforeSend: function(xhr) {
+            __disable_submit_button(form.find('button[type="submit"]'));
+        },
+        success: function(result) {
+            if (result.success == true) {
+                var newOption = new Option(result.data.name, result.data.id, true, true);
+                $('#manufacturer_id')
+                    .append(newOption)
+                    .trigger('change');
+                $('div.view_modal').modal('hide');
+                toastr.success(result.msg);
+            } else {
+                toastr.error(result.msg);
+            }
+        },
+    });
+});
+
+$(document).on('submit', 'form#quick_add_division_form', function(e) {
+    e.preventDefault();
+    var form = $(this);
+    var data = form.serialize();
+
+    $.ajax({
+        method: 'POST',
+        url: $(this).attr('action'),
+        dataType: 'json',
+        data: data,
+        beforeSend: function(xhr) {
+            __disable_submit_button(form.find('button[type="submit"]'));
+        },
+        success: function(result) {
+            if (result.success == true) {
+                var newOption = new Option(result.data.name, result.data.id, true, true);
+                $('#division_id')
+                    .append(newOption)
+                    .trigger('change');
+                $('div.view_modal').modal('hide');
+                toastr.success(result.msg);
+            } else {
+                toastr.error(result.msg);
+            }
+        },
+    });
+});
+
 $(document).on('click', 'button.apply-all', function(){
     var val = $(this).closest('.input-group').find('input').val();
     var target_class = $(this).data('target-class');

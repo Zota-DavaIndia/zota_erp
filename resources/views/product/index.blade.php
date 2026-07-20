@@ -166,6 +166,11 @@
                                      @lang('report.stock_report')</a>
                                 </li>
                             @endcan
+                            <li>
+                                <a href="#movement_analysis_tab" data-toggle="tab"
+                                    aria-expanded="true"><i class="fa fa-line-chart" aria-hidden="true"></i>
+                                 @lang('lang_v1.movement_analysis')</a>
+                            </li>
                         </ul>
 
                         <div class="tab-content">
@@ -206,6 +211,9 @@
                                     @include('report.partials.stock_report_table')
                                 </div>
                             @endcan
+                            <div class="tab-pane" id="movement_analysis_tab">
+                                @include('product.partials.movement_analysis')
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -318,6 +326,34 @@
                         searchable: false
                     },
                     {
+                        data: 'mrp_display',
+                        searchable: false,
+                        orderable: false
+                    },
+                    {
+                        data: 'drug_schedule_display',
+                        searchable: false,
+                        orderable: false
+                    },
+                    {
+                        data: 'hsn_code',
+                        name: 'products.hsn_code'
+                    },
+                    {
+                        data: 'dosage_form',
+                        name: 'products.dosage_form'
+                    },
+                    {
+                        data: 'movement_tag_display',
+                        searchable: false,
+                        orderable: false
+                    },
+                    {
+                        data: 'stock_min_max',
+                        searchable: false,
+                        orderable: false
+                    },
+                    {
                         data: 'type',
                         name: 'products.type'
                     },
@@ -328,6 +364,10 @@
                     {
                         data: 'brand',
                         name: 'brands.name'
+                    },
+                    {
+                        data: 'manufacturer',
+                        name: 'manufacturers.name'
                     },
                     {
                         data: 'tax',
@@ -571,6 +611,10 @@
                     if ($("#product_stock_report").hasClass('active')) {
                         stock_report_table.ajax.reload();
                     }
+
+                    if ($("#movement_analysis_tab").hasClass('active')) {
+                        movement_analysis_table.ajax.reload();
+                    }
                 });
 
             $(document).on('ifChanged', '#not_for_selling, #woocommerce_enabled', function() {
@@ -580,6 +624,12 @@
 
                 if ($("#product_stock_report").hasClass('active')) {
                     stock_report_table.ajax.reload();
+                }
+            });
+
+            $(document).on('change', '#movement_tag_filter', function() {
+                if (movement_table_initialized) {
+                    movement_analysis_table.ajax.reload();
                 }
             });
 
@@ -645,8 +695,44 @@
                 __currency_convert_recursively($(this));
             });
         var data_table_initailized = false;
+        var movement_table_initialized = false;
         $('a[data-toggle="tab"]').on('shown.bs.tab', function(e) {
-            if ($(e.target).attr('href') == '#product_stock_report') {
+            if ($(e.target).attr('href') == '#movement_analysis_tab') {
+                if (!movement_table_initialized) {
+                    movement_analysis_table = $('#movement_analysis_table').DataTable({
+                        processing: true,
+                        serverSide: true,
+                        scrollY: "75vh",
+                        scrollX: true,
+                        scrollCollapse: true,
+                        fixedHeader: false,
+                        ajax: {
+                            url: '/products/movement-analysis',
+                            data: function(d) {
+                                d.movement_tag = $('#movement_tag_filter').val();
+                                d.location_id = $('#location_id').val();
+                            }
+                        },
+                        columns: [
+                            { data: 'product', name: 'products.name' },
+                            { data: 'sku', name: 'products.sku' },
+                            { data: 'manufacturer', name: 'manufacturers.name' },
+                            { data: 'movement_tag_display', searchable: false, orderable: false },
+                            { data: 'current_stock', searchable: false, orderable: false },
+                            { data: 'stock_min', searchable: false, orderable: false },
+                            { data: 'stock_max', searchable: false, orderable: false },
+                            { data: 'last_updated', searchable: false },
+                            { data: 'next_update', searchable: false, orderable: false },
+                        ],
+                        fnDrawCallback: function(oSettings) {
+                            __currency_convert_recursively($('#movement_analysis_table'));
+                        },
+                    });
+                    movement_table_initialized = true;
+                } else {
+                    movement_analysis_table.ajax.reload();
+                }
+            } else if ($(e.target).attr('href') == '#product_stock_report') {
                 if (!data_table_initailized) {
                     //Stock report table
                     var stock_report_cols = [{

@@ -33,6 +33,7 @@ class Kernel extends ConsoleKernel
 
             $schedule->command('pos:generateRecurringExpense')->dailyAt('02:00');
 
+            $schedule->command('pos:updateMovementTags')->dailyAt('03:00');
         }
 
         if ($env === 'demo') {

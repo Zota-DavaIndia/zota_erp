@@ -48,6 +48,15 @@ Route::middleware('web', 'SetSessionData', 'auth', 'language', 'AdminSidebarMenu
     // Per-business sale-return window
     Route::post('/business/{business_id}/return-policy', [Modules\Superadmin\Http\Controllers\BusinessController::class, 'saveReturnPolicy'])->name('business.return-policy');
 
+    // Movement tag configs and stock min/max settings
+    Route::get('/movement-tags', [Modules\Superadmin\Http\Controllers\MovementTagController::class, 'index'])->name('movement-tags.index');
+    Route::post('/movement-tags/save-global', [Modules\Superadmin\Http\Controllers\MovementTagController::class, 'saveGlobal'])->name('movement-tags.save-global');
+    Route::post('/movement-tags/save-location', [Modules\Superadmin\Http\Controllers\MovementTagController::class, 'saveLocation'])->name('movement-tags.save-location');
+    Route::post('/movement-tags/remove-override', [Modules\Superadmin\Http\Controllers\MovementTagController::class, 'removeLocationOverride'])->name('movement-tags.remove-override');
+    Route::get('/stock-settings', [Modules\Superadmin\Http\Controllers\MovementTagController::class, 'stockSettings'])->name('stock-settings.index');
+    Route::post('/stock-settings/save', [Modules\Superadmin\Http\Controllers\MovementTagController::class, 'saveStockSettings'])->name('stock-settings.save');
+    Route::get('/movement-tags/run-auto', [Modules\Superadmin\Http\Controllers\MovementTagController::class, 'runAutoCalculation'])->name('movement-tags.run-auto');
+
     // Universal (chain-wide) customer management
     Route::get('/customers', [Modules\Superadmin\Http\Controllers\SuperadminCustomerController::class, 'index'])->name('customers.index');
     Route::get('/customers/{id}/toggle-global/{global}', [Modules\Superadmin\Http\Controllers\SuperadminCustomerController::class, 'toggleGlobal'])->name('customers.toggle-global');

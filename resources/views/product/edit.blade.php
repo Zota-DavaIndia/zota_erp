@@ -175,13 +175,78 @@
 
             <div class="col-sm-4">
               <div class="form-group">
+                {!! Form::label('hsn_code', __('lang_v1.hsn_code') . ':') !!}
+                {!! Form::text('hsn_code', $product->hsn_code, ['class' => 'form-control', 'placeholder' => __('lang_v1.hsn_code')]); !!}
+              </div>
+            </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+                {!! Form::label('drug_schedule', __('lang_v1.drug_schedule') . ':') !!}
+                {!! Form::select('drug_schedule', $drug_schedules, $product->drug_schedule, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+              </div>
+            </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+                {!! Form::label('dosage_form', __('lang_v1.dosage_form') . ':') !!}
+                {!! Form::select('dosage_form', $dosage_forms, $product->dosage_form, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+              </div>
+            </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+                {!! Form::label('storage_condition', __('lang_v1.storage_condition') . ':') !!}
+                {!! Form::select('storage_condition', $storage_conditions, $product->storage_condition, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+              </div>
+            </div>
+
+            <div class="clearfix"></div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+                {!! Form::label('manufacturer_id', __('lang_v1.manufacturer') . ':') !!}
+                <div class="input-group">
+                    {!! Form::select('manufacturer_id', $manufacturers, $product->manufacturer_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                    <span class="input-group-btn">
+                        <button type="button" @if(!auth()->user()->can('brand.create')) disabled @endif class="btn btn-default bg-white btn-flat btn-modal" data-href="{{action([\App\Http\Controllers\ManufacturerController::class, 'create'], ['quick_add' => true])}}" title="@lang('lang_v1.add_manufacturer')" data-container=".view_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
+                    </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+                {!! Form::label('division_id', __('lang_v1.division') . ':') !!}
+                <div class="input-group">
+                    {!! Form::select('division_id', $divisions, $product->division_id, ['placeholder' => __('messages.please_select'), 'class' => 'form-control select2']); !!}
+                    <span class="input-group-btn">
+                        <button type="button" @if(!auth()->user()->can('brand.create')) disabled @endif class="btn btn-default bg-white btn-flat btn-modal" data-href="{{action([\App\Http\Controllers\DivisionController::class, 'create'], ['quick_add' => true])}}" title="@lang('lang_v1.add_division')" data-container=".view_modal"><i class="fa fa-plus-circle text-primary fa-lg"></i></button>
+                    </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+                {!! Form::label('product_tags', __('lang_v1.tags') . ':') !!}
+                @php
+                  $selected_tags = !empty($product->product_tags) ? explode(',', $product->product_tags) : [];
+                  $tags_options = array_combine($selected_tags, $selected_tags);
+                @endphp
+                {!! Form::select('product_tags[]', $tags_options, $selected_tags, ['class' => 'form-control select2', 'multiple', 'id' => 'product_tags', 'data-tags' => 'true', 'data-placeholder' => __('lang_v1.tags_placeholder')]); !!}
+              </div>
+            </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
                 {!! Form::label('product_locations', __('business.business_locations') . ':') !!} @show_tooltip(__('lang_v1.product_location_help'))
                   {!! Form::select('product_locations[]', $business_locations, $product->product_locations->pluck('id'), ['class' => 'form-control select2', 'multiple', 'id' => 'product_locations']); !!}
               </div>
             </div>
 
             <div class="clearfix"></div>
-            
+
             <div class="col-sm-4">
               <div class="form-group">
               <br>
@@ -190,6 +255,45 @@
                 </label>@show_tooltip(__('tooltip.enable_stock')) <p class="help-block"><i>@lang('product.enable_stock_help')</i></p>
               </div>
             </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+              <br>
+                <label>
+                  {!! Form::checkbox('prescription_required', 1, $product->prescription_required, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.prescription_required')</strong>
+                </label>
+              </div>
+            </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+              <br>
+                <label>
+                  {!! Form::checkbox('can_be_purchased', 1, $product->can_be_purchased, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.can_be_purchased')</strong>
+                </label>
+              </div>
+            </div>
+
+            <div class="clearfix"></div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+              <br>
+                <label>
+                  {!! Form::checkbox('can_be_stored', 1, $product->can_be_stored, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.can_be_stored')</strong>
+                </label>
+              </div>
+            </div>
+
+            <div class="col-sm-4">
+              <div class="form-group">
+              <br>
+                <label>
+                  {!! Form::checkbox('can_be_sold', 1, $product->can_be_sold, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.can_be_sold')</strong>
+                </label>
+              </div>
+            </div>
+
             <div class="col-sm-4" id="alert_quantity_div" @if(!$product->enable_stock) style="display:none" @endif>
               <div class="form-group">
                 {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!} @show_tooltip(__('tooltip.alert_quantity'))

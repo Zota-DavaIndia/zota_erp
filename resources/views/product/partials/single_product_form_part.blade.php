@@ -16,6 +16,9 @@
           <th>@lang('product.default_purchase_price')</th>
           <th>@lang('product.profit_percent') @show_tooltip(__('tooltip.profit_percent'))</th>
           <th>@lang('product.default_selling_price')</th>
+          <th>@lang('lang_v1.mrp_inc_tax')</th>
+          <th>@lang('lang_v1.ptr')</th>
+          <th>@lang('lang_v1.pts')</th>
           @if(empty($quick_add))
             <th>@lang('lang_v1.product_image')</th>
           @endif
@@ -30,7 +33,7 @@
 
             <div class="col-sm-6">
               {!! Form::label('single_dpp_inc_tax', trans('product.inc_of_tax') . ':*') !!}
-            
+
               {!! Form::text('single_dpp_inc_tax', $default, ['class' => 'form-control input-sm dpp_inc_tax input_number', 'placeholder' => __('product.inc_of_tax'), 'required']); !!}
             </div>
           </td>
@@ -45,6 +48,21 @@
             {!! Form::text('single_dsp', $default, ['class' => 'form-control input-sm dsp input_number', 'placeholder' => __('product.exc_of_tax'), 'id' => 'single_dsp', 'required']); !!}
 
             {!! Form::text('single_dsp_inc_tax', $default, ['class' => 'form-control input-sm hide input_number', 'placeholder' => __('product.inc_of_tax'), 'id' => 'single_dsp_inc_tax', 'required']); !!}
+          </td>
+
+          <td>
+            <br/>
+            {!! Form::text('single_mrp_inc_tax', $default, ['class' => 'form-control input-sm input_number', 'placeholder' => __('lang_v1.mrp_inc_tax'), 'id' => 'single_mrp_inc_tax']); !!}
+          </td>
+
+          <td>
+            <br/>
+            {!! Form::text('single_ptr', $default, ['class' => 'form-control input-sm input_number', 'placeholder' => __('lang_v1.ptr'), 'id' => 'single_ptr']); !!}
+          </td>
+
+          <td>
+            <br/>
+            {!! Form::text('single_pts', $default, ['class' => 'form-control input-sm input_number', 'placeholder' => __('lang_v1.pts'), 'id' => 'single_pts']); !!}
           </td>
           @if(empty($quick_add))
           <td>
