@@ -1689,4 +1689,17 @@ return [
     'enter_customer_name_phone' => 'Enter Customer name / phone',
     'cart_is_empty' => 'Your cart is empty',
     'cart_is_empty_hint' => 'Scan a barcode, tap a product tile, or type to search.',
+
+    'purchase_history' => 'Purchase History',
+    'purchase_history_of' => 'Purchase History of',
+    'purchase_history_chain_wide_note' => 'Shows this customer\'s last purchases across all Dava India stores.',
+    'no_purchase_history_found' => 'No previous purchases found for this customer.',
+    'deleted_product' => 'Deleted product',
+    'partially_returned' => 'Partially returned',
+    'view_purchase_history' => 'View purchase history',
+    'select_customer_to_view_history' => 'Select a customer first to view their purchase history',
+
+    'sell_return_window_expired' => 'This sale can no longer be returned. It was purchased on :purchase_date and returns were allowed only up to :last_date.',
+
+    'master_sync_partial_failure' => 'Note: syncing to :count store(s) failed and was skipped — see logs. The product itself was saved.',
 ];

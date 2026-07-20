@@ -24,6 +24,7 @@
 					@can('sell.payments')
 					<button type="button" id="pos-receive-customer-payment" class="btn btn-default bg-white btn-flat" title="@lang('lang_v1.receive_payment')"><i class="fas fa-hand-holding-usd text-primary fa-lg"></i></button>
 					@endcan
+					<button type="button" id="pos-view-customer-purchase-history" class="btn btn-default bg-white btn-flat" title="@lang('lang_v1.view_purchase_history')"><i class="fa fa-history text-primary fa-lg"></i></button>
 				</span>
 			</div>
 			<small class="text-danger hide contact_due_text"><strong>@lang('account.customer_due'):</strong> <span></span></small>

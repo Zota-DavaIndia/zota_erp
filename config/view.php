@@ -13,10 +13,19 @@ return [
     |
     */
 
-    'paths' => [
-        base_path('custom_views'),
+    /*
+     | custom_views is an optional override directory (UltimatePOS
+     | feature): views placed there take precedence over the core
+     | resources/views. It is only added when it actually exists —
+     | otherwise Blade's view-path scan (e.g. during `view:cache` /
+     | `optimize`) throws DirectoryNotFoundException on a missing
+     | directory. Kept first so overrides still win when present.
+     | (config/backup.php already guards this same path the same way.)
+     */
+    'paths' => array_values(array_filter([
+        file_exists(base_path('custom_views')) ? base_path('custom_views') : null,
         resource_path('views'),
-    ],
+    ])),
 
     /*
     |--------------------------------------------------------------------------

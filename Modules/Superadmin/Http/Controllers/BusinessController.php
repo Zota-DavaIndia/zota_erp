@@ -667,6 +667,28 @@ class BusinessController extends BaseController
      * @param  Request  $request
      * @return Response
      */
+    /**
+     * Save the per-store sale-return window (number of days after
+     * purchase within which a customer may return at that store).
+     * 0 / blank clears the limit (unlimited returns).
+     */
+    public function saveReturnPolicy(Request $request, $business_id)
+    {
+        if (! auth()->user()->can('superadmin')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business = Business::findOrFail($business_id);
+        $days = (int) $request->input('sell_return_period_days');
+        $business->sell_return_period_days = $days > 0 ? $days : null;
+        $business->save();
+
+        return redirect()->back()->with('status', [
+            'success' => 1,
+            'msg' => __('superadmin::lang.return_policy_updated', ['business' => $business->name]),
+        ]);
+    }
+
     public function update(Request $request)
     {
     }

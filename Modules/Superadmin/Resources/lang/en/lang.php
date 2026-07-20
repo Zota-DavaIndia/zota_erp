@@ -315,4 +315,10 @@ return [
     'mirror_scheme_locked' => 'This invoice scheme is managed centrally by the super admin and cannot be modified here.',
     'mirror_layout_locked' => 'This invoice layout is managed centrally by the super admin and cannot be modified here.',
     'scheme_creation_blocked' => 'Invoice schemes are managed centrally by the super admin for this store.',
+
+    // Per-store sale-return window
+    'sell_return_policy' => 'Sale Return Policy',
+    'sell_return_period_days' => 'Return period (days)',
+    'sell_return_period_days_help' => 'Number of days after the purchase date within which a customer may return a sale at this store. Leave 0 (or blank) for no time limit. Returns are always restricted to the store where the sale was made.',
+    'return_policy_updated' => 'Return policy updated for :business',
 ];

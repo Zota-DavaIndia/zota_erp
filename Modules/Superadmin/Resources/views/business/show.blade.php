@@ -187,7 +187,26 @@
     <div class="box">
         <div class="box-header">
                 <h3 class="box-title">
-                    <strong><i class="fa fa-map-marker margin-r-5"></i> 
+                    <strong><i class="fa fa-undo margin-r-5"></i>
+                    @lang( 'superadmin::lang.sell_return_policy' )</strong>
+                </h3>
+        </div>
+        <div class="box-body">
+            {!! Form::open(['url' => action([\Modules\Superadmin\Http\Controllers\BusinessController::class, 'saveReturnPolicy'], [$business->id]), 'method' => 'post', 'class' => 'form-inline']) !!}
+                <div class="form-group">
+                    {!! Form::label('sell_return_period_days', __('superadmin::lang.sell_return_period_days') . ':') !!}
+                    {!! Form::number('sell_return_period_days', $business->sell_return_period_days, ['class' => 'form-control', 'min' => 0, 'style' => 'width:120px', 'placeholder' => '0']) !!}
+                    <button type="submit" class="btn btn-primary">@lang('messages.save')</button>
+                </div>
+                <p class="help-block">@lang('superadmin::lang.sell_return_period_days_help')</p>
+            {!! Form::close() !!}
+        </div>
+    </div>
+
+    <div class="box">
+        <div class="box-header">
+                <h3 class="box-title">
+                    <strong><i class="fa fa-map-marker margin-r-5"></i>
                     @lang( 'superadmin::lang.business_location' )</strong>
                 </h3>
         </div>

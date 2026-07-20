@@ -24,11 +24,27 @@ class SuperadminProductController extends Controller
     public static function syncMasterProductToAllBusinesses(Product $master_product)
     {
         $controller = app(self::class);
-        $businesses = Business::where('is_active', 1)->get();
 
-        foreach ($businesses as $business) {
-            $controller->syncMasterProductToBusiness($master_product, $business);
-        }
+        // Isolate each store: a failure syncing to one business (bad
+        // data, a deadlock, a timeout) must not abort propagation to
+        // every remaining store. Collect failures so the caller can
+        // surface them instead of the operation silently reporting
+        // full success while some stores were skipped.
+        // chunkById keeps memory flat as the chain grows.
+        $failed = [];
+        Business::where('is_active', 1)->chunkById(100, function ($businesses) use ($controller, $master_product, &$failed) {
+            foreach ($businesses as $business) {
+                try {
+                    $controller->syncMasterProductToBusiness($master_product, $business);
+                } catch (\Exception $e) {
+                    $failed[] = $business->id;
+                    \Log::error('Master product sync failed for business ' . $business->id
+                        . ' (product ' . $master_product->id . '): ' . $e->getMessage());
+                }
+            }
+        });
+
+        return $failed;
     }
 
     /**
@@ -119,7 +135,36 @@ class SuperadminProductController extends Controller
             $default_purchase_sub_unit_id = $this->resolveUnitForBusiness($business->id, $mp, $created_by);
         }
 
-        // Create the business product copy
+        // Resolve tax / composition / warranty for this business. These
+        // are find-or-null (the store must have its own matching row),
+        // exactly as the update-sync path does — kept here so a freshly
+        // cloned product is COMPLETE on first creation instead of
+        // missing these fields until the master is next edited.
+        $tax_id = null;
+        if (!empty($master_product->tax)) {
+            $tax = TaxRate::find($master_product->tax);
+            if ($tax) {
+                $tax_id = $this->resolveTaxForBusiness($business->id, $tax->name, $tax->amount);
+            }
+        }
+        $composition_id = null;
+        if (!empty($master_product->composition_id)) {
+            $composition = Composition::find($master_product->composition_id);
+            if ($composition) {
+                $composition_id = $this->resolveCompositionForBusiness($business->id, $composition->name);
+            }
+        }
+        $warranty_id = null;
+        if (!empty($master_product->warranty_id)) {
+            $warranty = Warranty::find($master_product->warranty_id);
+            if ($warranty) {
+                $warranty_id = $this->resolveWarrantyForBusiness($business->id, $warranty->name, $warranty->duration, $warranty->duration_type);
+            }
+        }
+
+        // Create the business product copy. Field set is kept in sync
+        // with syncMasterProductUpdateToBusinesses() so create and
+        // update produce identical clones.
         $product = Product::create([
             'master_product_id' => $master_product->id,
             'name' => $master_product->name,
@@ -129,6 +174,9 @@ class SuperadminProductController extends Controller
             'secondary_unit_id' => $secondary_unit_id,
             'category_id' => $category_id,
             'brand_id' => $brand_id,
+            'tax' => $tax_id,
+            'composition_id' => $composition_id,
+            'warranty_id' => $warranty_id,
             'sku' => $master_product->sku . '-' . $business->id,
             'barcode_type' => $master_product->barcode_type,
             'image' => $master_product->image,
@@ -139,12 +187,36 @@ class SuperadminProductController extends Controller
             'not_for_selling' => $master_product->not_for_selling,
             'tax_type' => $master_product->tax_type,
             'is_inactive' => $master_product->is_inactive ?? 0,
+            'expiry_period_type' => $master_product->expiry_period_type,
+            'expiry_period' => $master_product->expiry_period,
+            'enable_sr_no' => $master_product->enable_sr_no,
+            'preparation_time_in_minutes' => $master_product->preparation_time_in_minutes,
             'created_by' => $created_by,
             'sub_unit_ids' => $sub_unit_ids,
             'sell_sub_unit_ids' => $sell_sub_unit_ids ?: null,
             'purchase_sub_unit_ids' => $purchase_sub_unit_ids ?: null,
             'default_sell_sub_unit_id' => $default_sell_sub_unit_id,
             'default_purchase_sub_unit_id' => $default_purchase_sub_unit_id,
+            'product_custom_field1' => $master_product->product_custom_field1,
+            'product_custom_field2' => $master_product->product_custom_field2,
+            'product_custom_field3' => $master_product->product_custom_field3,
+            'product_custom_field4' => $master_product->product_custom_field4,
+            'product_custom_field5' => $master_product->product_custom_field5,
+            'product_custom_field6' => $master_product->product_custom_field6,
+            'product_custom_field7' => $master_product->product_custom_field7,
+            'product_custom_field8' => $master_product->product_custom_field8,
+            'product_custom_field9' => $master_product->product_custom_field9,
+            'product_custom_field10' => $master_product->product_custom_field10,
+            'product_custom_field11' => $master_product->product_custom_field11,
+            'product_custom_field12' => $master_product->product_custom_field12,
+            'product_custom_field13' => $master_product->product_custom_field13,
+            'product_custom_field14' => $master_product->product_custom_field14,
+            'product_custom_field15' => $master_product->product_custom_field15,
+            'product_custom_field16' => $master_product->product_custom_field16,
+            'product_custom_field17' => $master_product->product_custom_field17,
+            'product_custom_field18' => $master_product->product_custom_field18,
+            'product_custom_field19' => $master_product->product_custom_field19,
+            'product_custom_field20' => $master_product->product_custom_field20,
         ]);
 
         // Copy variations
@@ -243,6 +315,7 @@ class SuperadminProductController extends Controller
         }
 
         $business_products = Product::where('master_product_id', $master->id)->get();
+        $failed = [];
 
         // 2) Resolve master unit/category/brand/tax/composition/warranty
         $unit = Unit::find($master->unit_id);
@@ -255,6 +328,7 @@ class SuperadminProductController extends Controller
         $secondary_unit = !empty($master->secondary_unit_id) ? Unit::find($master->secondary_unit_id) : null;
 
         foreach ($business_products as $bp) {
+          try {
             $created_by = $bp->created_by;
 
             $unit_id = $controller->resolveUnitForBusiness($bp->business_id, $unit, $created_by, 'Pieces', 'Pc(s)');
@@ -364,7 +438,14 @@ class SuperadminProductController extends Controller
 
             // Sync variations (single + variable)
             $controller->syncVariationsFromMaster($master, $bp);
+          } catch (\Exception $e) {
+            $failed[] = $bp->business_id;
+            \Log::error('Master product update-sync failed for business ' . $bp->business_id
+                . ' (product ' . $master->id . '): ' . $e->getMessage());
+          }
         }
+
+        return $failed;
     }
 
     /**
@@ -560,16 +641,29 @@ class SuperadminProductController extends Controller
             }
         }
 
+        // Remove ONLY stale clone variations — those that no longer
+        // correspond to any current master variation. A clone is stale
+        // when its master_variation_id points at a master variation
+        // that was deleted (NOT IN the current set), or (legacy rows
+        // with no link) its name is no longer present on the master.
+        //
+        // NOTE: this previously used whereIn(master_variation_id, ...),
+        // which deleted exactly the variations that ARE correctly
+        // linked to the current master — wiping every valid store
+        // variation on each variable-product update. It must be
+        // whereNotIn.
         $master_var_ids = $master_vars->pluck('id')->toArray();
         $master_var_names = $master_vars->pluck('name')->toArray();
 
         Variation::where('product_id', $business_product->id)
             ->where(function ($q) use ($master_var_ids, $master_var_names) {
-                $q->whereIn('master_variation_id', $master_var_ids)
-                  ->orWhere(function ($q2) use ($master_var_ids, $master_var_names) {
-                      $q2->whereNull('master_variation_id')
-                         ->whereNotIn('name', $master_var_names);
-                  });
+                $q->where(function ($q1) use ($master_var_ids) {
+                    $q1->whereNotNull('master_variation_id')
+                       ->whereNotIn('master_variation_id', $master_var_ids);
+                })->orWhere(function ($q2) use ($master_var_names) {
+                    $q2->whereNull('master_variation_id')
+                       ->whereNotIn('name', $master_var_names);
+                });
             })
             ->delete();
     }

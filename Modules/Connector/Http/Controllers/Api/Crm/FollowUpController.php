@@ -34,11 +34,28 @@ class FollowUpController extends ApiController
      *
      * @return void
      */
-    public function __construct(Util $commonUtil, ModuleUtil $moduleUtil, CrmUtil $crmUtil)
+    public function __construct(Util $commonUtil, ModuleUtil $moduleUtil)
     {
         $this->moduleUtil = $moduleUtil;
         $this->commonUtil = $commonUtil;
-        $this->crmUtil = $crmUtil;
+    }
+
+    /**
+     * Lazily resolve CrmUtil.
+     *
+     * CrmUtil lives in the optional Crm module. Injecting it via the
+     * constructor forces the container to instantiate it whenever this
+     * controller is resolved — including during `route:cache` /
+     * `route:list` / `optimize`, which resolve every controller — and
+     * that hard-fails when the Crm module is not installed. Resolving
+     * it here means the class is only required when one of the CRM
+     * follow-up endpoints is actually called (which is only useful
+     * when the Crm module is present), keeping all artisan caching
+     * commands working regardless of whether Crm is installed.
+     */
+    private function crmUtil()
+    {
+        return app(\Modules\Crm\Utils\CrmUtil::class);
     }
 
     /**
@@ -234,7 +251,7 @@ class FollowUpController extends ApiController
         $start_date = request()->input('start_date');
         $end_date = request()->input('end_date');
 
-        $query = $this->crmUtil->getFollowUpForGivenDate($user, $start_date, $end_date);
+        $query = $this->crmUtil()->getFollowUpForGivenDate($user, $start_date, $end_date);
 
         if (! empty(request()->input('status'))) {
             $query->where('status', request()->input('status'));
@@ -370,7 +387,7 @@ class FollowUpController extends ApiController
 
             DB::beginTransaction();
 
-            $schedule = $this->crmUtil->addFollowUp($params, Auth::user());
+            $schedule = $this->crmUtil()->addFollowUp($params, Auth::user());
 
             DB::commit();
 
@@ -608,7 +625,7 @@ class FollowUpController extends ApiController
 
             DB::beginTransaction();
 
-            $schedule = $this->crmUtil->updateFollowUp($follow_up_id, $params, Auth::user());
+            $schedule = $this->crmUtil()->updateFollowUp($follow_up_id, $params, Auth::user());
 
             DB::commit();
 
@@ -986,7 +1003,7 @@ class FollowUpController extends ApiController
     public function getLeads()
     {
         $user = Auth::user();
-        $query = $this->crmUtil->getLeadsListQuery($user->business_id);
+        $query = $this->crmUtil()->getLeadsListQuery($user->business_id);
 
         $can_access_all_leads = $user->can('crm.access_all_leads');
         $can_access_own_leads = $user->can('crm.access_own_leads');

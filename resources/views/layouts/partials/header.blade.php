@@ -233,7 +233,11 @@
                             </a>
                         </li>
                         <li>
+                            {{-- Auth::routes() registers logout as POST only, so this
+                                 must submit a POST form (with CSRF), not a GET link,
+                                 to avoid a 405 MethodNotAllowed. --}}
                             <a href="{{ action([\App\Http\Controllers\Auth\LoginController::class, 'logout']) }}"
+                                onclick="event.preventDefault(); document.getElementById('header-logout-form').submit();"
                                 class="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-transition-all tw-duration-200 tw-rounded-lg hover:tw-text-gray-900 hover:tw-bg-gray-100"
                                 role="menuitem" tabindex="-1">
                                 <svg aria-hidden="true" class="tw-w-5 tw-h-5" xmlns="http://www.w3.org/2000/svg"
@@ -247,6 +251,9 @@
                                 </svg>
                                 @lang('lang_v1.sign_out')
                             </a>
+                            <form id="header-logout-form" action="{{ action([\App\Http\Controllers\Auth\LoginController::class, 'logout']) }}" method="POST" class="tw-hidden">
+                                @csrf
+                            </form>
                         </li>
                     </ul>
                 </details>

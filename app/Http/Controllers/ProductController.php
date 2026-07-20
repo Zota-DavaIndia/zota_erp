@@ -660,19 +660,27 @@ class ProductController extends Controller
             DB::commit();
 
             // If superadmin, sync product to all businesses (defensive: never block the product save)
+            $sync_failed = [];
             if ($is_superadmin && $this->moduleUtil->isSuperadminInstalled()) {
                 try {
-                    \Modules\Superadmin\Http\Controllers\SuperadminProductController::syncMasterProductToAllBusinesses($product);
+                    $sync_failed = \Modules\Superadmin\Http\Controllers\SuperadminProductController::syncMasterProductToAllBusinesses($product);
                 } catch (\Exception $e) {
                     \Log::error('Master product sync after store failed: ' . $e->getMessage(), [
                         'product_id' => $product->id,
                     ]);
+                    $sync_failed = ['*'];
                 }
             }
 
             $output = ['success' => 1,
                 'msg' => __('product.product_added_success'),
             ];
+
+            // Surface partial-sync failures instead of silently reporting
+            // full success while some stores were skipped.
+            if (! empty($sync_failed)) {
+                $output['msg'] .= ' ' . __('lang_v1.master_sync_partial_failure', ['count' => count($sync_failed)]);
+            }
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
@@ -1067,19 +1075,25 @@ class ProductController extends Controller
             // clone->master write-back when the edited product is
             // not itself a master, so the master always stays
             // authoritative and other clones get the change.
+            $sync_failed = [];
             if ($is_superadmin && $this->moduleUtil->isSuperadminInstalled()) {
                 try {
-                    \Modules\Superadmin\Http\Controllers\SuperadminProductController::syncMasterProductUpdateToBusinesses($product);
+                    $sync_failed = \Modules\Superadmin\Http\Controllers\SuperadminProductController::syncMasterProductUpdateToBusinesses($product);
                 } catch (\Exception $e) {
                     \Log::error('Master product update sync failed: ' . $e->getMessage(), [
                         'product_id' => $product->id,
                     ]);
+                    $sync_failed = ['*'];
                 }
             }
 
             $output = ['success' => 1,
                 'msg' => __('product.product_updated_success'),
             ];
+
+            if (! empty($sync_failed)) {
+                $output['msg'] .= ' ' . __('lang_v1.master_sync_partial_failure', ['count' => count($sync_failed)]);
+            }
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
@@ -1976,6 +1990,18 @@ class ProductController extends Controller
 
                     //Delete if no purchase found
                     if (empty($product->purchase_lines->toArray()) && $can_be_deleted) {
+                        //If this is a superadmin master product, remove its
+                        //synced store copies first — otherwise bulk-deleting
+                        //masters would orphan every store's copy (dangling
+                        //master_product_id). Mirrors the single destroy() path.
+                        if (!empty($product->is_master_product) && $this->isSuperadmin() && $this->moduleUtil->isSuperadminInstalled()) {
+                            try {
+                                \Modules\Superadmin\Http\Controllers\SuperadminProductController::deleteSyncedBusinessProducts($product->id);
+                            } catch (\Exception $e) {
+                                \Log::error('Failed deleting synced copies of master product ' . $product->id . ': ' . $e->getMessage());
+                            }
+                        }
+
                         //Delete variation location details
                         VariationLocationDetails::where('product_id', $product->id)
                                                     ->delete();

@@ -1702,6 +1702,93 @@ class ContactController extends Controller
         }
     }
 
+    /**
+     * Chain-wide purchase history for a customer, shown from the POS
+     * screen — "what did this customer buy, and at which Dava India
+     * store?". Deliberately NOT scoped to the logged-in store's
+     * business_id: customers are shared/deduplicated across the
+     * whole chain, so a customer's last purchases may have happened
+     * at any store. This is the one intentional cross-business query
+     * in this controller.
+     *
+     * Also covers pre-deduplication history: older sales may still
+     * point at a contact row that has since been merged into this
+     * one (contacts.master_contact_id), so both the contact itself
+     * and any contacts merged into it are included.
+     */
+    public function getCustomerPurchaseHistoryModal($contact_id)
+    {
+        if (! request()->ajax()) {
+            abort(404);
+        }
+
+        $contact = Contact::findOrFail($contact_id);
+
+        $contact_ids = Contact::where('id', $contact_id)
+            ->orWhere('master_contact_id', $contact_id)
+            ->pluck('id');
+
+        $limit = 10;
+
+        $transactions = Transaction::with([
+                'business:id,name',
+                'sell_lines' => function ($q) {
+                    $q->with(['product:id,name,unit_id', 'product.unit:id,actual_name,short_name', 'sub_unit:id,actual_name,short_name']);
+                },
+            ])
+            ->whereIn('contact_id', $contact_ids)
+            ->where('type', 'sell')
+            ->where('status', 'final')
+            ->orderBy('transaction_date', 'desc')
+            ->limit($limit)
+            ->get();
+
+        // Pre-format every money value HERE using each sale's OWN
+        // business currency, instead of relying on the @format_currency
+        // Blade directive. That directive reads session('currency'),
+        // which is only populated on full page loads and is not
+        // guaranteed on this ajax request — and it is the viewing
+        // store's currency anyway, whereas each invoice should show in
+        // the currency of the store that issued it. Business currency
+        // details are cached per business_id to avoid an N+1 query.
+        $business_util = new \App\Utils\BusinessUtil();
+        $business_details_cache = [];
+        $get_business_details = function ($business_id) use (&$business_details_cache, $business_util) {
+            if (! isset($business_details_cache[$business_id])) {
+                $business_details_cache[$business_id] = $business_util->getDetails($business_id);
+            }
+
+            return $business_details_cache[$business_id];
+        };
+
+        foreach ($transactions as $transaction) {
+            $bd = $get_business_details($transaction->business_id);
+
+            // Recalculate each line into the unit it was actually sold
+            // in (e.g. "2 Strip" rather than the stored base-unit
+            // quantity of 20 tablets) — uses the SELL's OWN business_id,
+            // since sub-unit definitions are per-business.
+            foreach ($transaction->sell_lines as $sell_line) {
+                if (! empty($sell_line->sub_unit_id) && ! empty($sell_line->product)) {
+                    $this->transactionUtil->recalculateSellLineTotals($transaction->business_id, $sell_line);
+                }
+
+                $sell_line->formatted_unit_price = $this->transactionUtil->num_f($sell_line->unit_price_inc_tax, true, $bd);
+                $sell_line->formatted_subtotal = $this->transactionUtil->num_f($sell_line->quantity * $sell_line->unit_price_inc_tax, true, $bd);
+                $sell_line->formatted_quantity = $this->transactionUtil->num_f($sell_line->quantity, false, $bd, true);
+            }
+
+            $transaction->formatted_final_total = $this->transactionUtil->num_f($transaction->final_total, true, $bd);
+            $transaction->formatted_date = $this->transactionUtil->format_date($transaction->transaction_date, true, $bd);
+        }
+
+        $html = view('contact.purchase_history_modal')
+            ->with(compact('contact', 'transactions'))
+            ->render();
+
+        return ['html' => $html];
+    }
+
     public function getContactDue($contact_id)
     {
         if (request()->ajax()) {

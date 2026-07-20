@@ -348,6 +348,22 @@ class SellReturnController extends Controller
             ->with(['sell_lines', 'location', 'return_parent', 'contact', 'tax', 'sell_lines.sub_unit', 'sell_lines.product', 'sell_lines.product.unit'])
             ->find($id);
 
+        //Block opening the return screen once the store's return window
+        //has elapsed — but only for a first-time return (an existing
+        //return can still be viewed/edited by an admin). Gives the
+        //cashier a clear message instead of failing on save.
+        $existing_return = Transaction::where('business_id', $business_id)
+            ->where('type', 'sell_return')
+            ->where('return_parent_id', $sell->id)
+            ->exists();
+        if (! $existing_return && ! $this->transactionUtil->isSellReturnWindowOpen($sell)) {
+            $output = ['success' => 0,
+                'msg' => $this->transactionUtil->sellReturnWindowExpiredMessage($sell),
+            ];
+
+            return redirect()->action([\App\Http\Controllers\SellReturnController::class, 'index'])->with('status', $output);
+        }
+
         foreach ($sell->sell_lines as $key => $value) {
             if (!empty($value->sub_unit_id)) {
                 $formated_sell_line = $this->transactionUtil->recalculateSellLineTotals($business_id, $value);
@@ -405,7 +421,8 @@ class SellReturnController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            if (get_class($e) == \App\Exceptions\PurchaseSellMismatch::class) {
+            if (get_class($e) == \App\Exceptions\PurchaseSellMismatch::class
+                || get_class($e) == \App\Exceptions\SellReturnWindowExpired::class) {
                 $msg = $e->getMessage();
             } else {
                 \Log::emergency('File:' . $e->getFile() . 'Line:' . $e->getLine() . 'Message:' . $e->getMessage());
@@ -691,6 +708,17 @@ class SellReturnController extends Controller
         if (empty($sell)) {
             return ['success' => 0,
                 'msg' => trans('lang_v1.sell_not_found'),
+            ];
+        }
+
+        //Reject an out-of-window sale up front (first-time return only).
+        $existing_return = Transaction::where('business_id', $business_id)
+            ->where('type', 'sell_return')
+            ->where('return_parent_id', $sell->id)
+            ->exists();
+        if (! $existing_return && ! $this->transactionUtil->isSellReturnWindowOpen($sell)) {
+            return ['success' => 0,
+                'msg' => $this->transactionUtil->sellReturnWindowExpiredMessage($sell),
             ];
         }
 

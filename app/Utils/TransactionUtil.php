@@ -6382,6 +6382,65 @@ class TransactionUtil extends Util
         return $parent_payment;
     }
 
+    /**
+     * The last moment a sale may be returned, based on the store's
+     * configurable return window (business.sell_return_period_days).
+     * Returns null when no limit is set (unlimited returns — the
+     * default). The window is measured in calendar days from the
+     * purchase date and runs through the end of the final day.
+     *
+     * @param  \App\Transaction  $sell  the parent sale
+     * @param  \App\Business|null  $business
+     * @return \Carbon\Carbon|null
+     */
+    public function getSellReturnDeadline($sell, $business = null)
+    {
+        if (empty($business)) {
+            $business = Business::find($sell->business_id);
+        }
+
+        $days = ! empty($business) ? $business->sell_return_period_days : null;
+
+        if (empty($days)) {
+            return null; // no time limit configured
+        }
+
+        return \Carbon::parse($sell->transaction_date)->addDays((int) $days)->endOfDay();
+    }
+
+    /**
+     * Whether a sale is still within its store's return window.
+     * True when no limit is configured.
+     *
+     * @param  \App\Transaction  $sell
+     * @param  \App\Business|null  $business
+     * @return bool
+     */
+    public function isSellReturnWindowOpen($sell, $business = null)
+    {
+        $deadline = $this->getSellReturnDeadline($sell, $business);
+
+        if (empty($deadline)) {
+            return true;
+        }
+
+        return \Carbon::now()->lte($deadline);
+    }
+
+    /**
+     * User-facing message for an expired return window, naming the
+     * purchase date and the last allowed return date.
+     */
+    public function sellReturnWindowExpiredMessage($sell, $business = null)
+    {
+        $deadline = $this->getSellReturnDeadline($sell, $business);
+
+        return __('lang_v1.sell_return_window_expired', [
+            'purchase_date' => $this->format_date($sell->transaction_date, false, $business),
+            'last_date' => $deadline ? $this->format_date($deadline->toDateTimeString(), false, $business) : '',
+        ]);
+    }
+
     public function addSellReturn($input, $business_id, $user_id, $uf_number = true)
     {
         $discount = [
@@ -6407,6 +6466,15 @@ class TransactionUtil extends Util
                 ->where('type', 'sell_return')
                 ->where('return_parent_id', $sell->id)
                 ->first();
+
+        //Enforce the store's configurable return window when a return
+        //is being created for the first time. This is the authoritative
+        //check covering BOTH the web return screen and the mobile API,
+        //since both funnel through here. Editing an already-existing
+        //return (an admin correction) is not re-restricted.
+        if (empty($sell_return) && ! $this->isSellReturnWindowOpen($sell, $business)) {
+            throw new \App\Exceptions\SellReturnWindowExpired($this->sellReturnWindowExpiredMessage($sell, $business));
+        }
 
         $sell_return_data = [
             'invoice_no' => $input['invoice_no'] ?? null,

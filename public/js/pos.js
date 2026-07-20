@@ -2874,6 +2874,49 @@ $(document).on('change', 'select#customer_id', function(){
     get_sales_orders();
 });
 
+// Purchase-history button. The button is left permanently clickable
+// (no enable/disable coupling to a customer-selection event, since
+// select2 does not reliably fire the native 'change' on the <select>
+// and binding timing to select2's own events is fragile). Instead the
+// guard runs at click time: read the currently-selected customer, and
+// only act if it is a real, specific customer (not the generic Walk-In
+// customer, whose chain-wide history is meaningless). Delegated from
+// document so DOM/init order is irrelevant.
+$(document).on('click', '#pos-view-customer-purchase-history', function() {
+    var customer_id = $('select#customer_id').val();
+    var default_customer_id = $('#default_customer_id').val();
+
+    if (!customer_id) {
+        toastr.warning(LANG.please_select_a_customer || 'Please select a customer first.');
+        return;
+    }
+    if (customer_id == default_customer_id) {
+        toastr.warning(LANG.walk_in_customer_history_na || 'Purchase history is not available for the Walk-In customer.');
+        return;
+    }
+
+    var btn = $(this);
+    btn.attr('disabled', true);
+
+    $.ajax({
+        url: '/contacts/' + customer_id + '/purchase-history',
+        dataType: 'json',
+        success: function(result) {
+            $('.view_modal').html(result.html);
+            $('.view_modal').modal('show');
+        },
+        error: function(xhr) {
+            toastr.error('Unable to load purchase history.');
+            if (window.console) {
+                console.log('purchase-history error', xhr.status, xhr.responseText);
+            }
+        },
+        complete: function() {
+            btn.removeAttr('disabled');
+        }
+    });
+});
+
 $(document).on('change', '#rp_redeemed_modal', function(){
     var points = $(this).val().trim();
     points = points == '' ? 0 : parseInt(points);
