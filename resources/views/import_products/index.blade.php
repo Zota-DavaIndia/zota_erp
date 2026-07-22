@@ -50,7 +50,7 @@
                 <br><br>
                 <div class="row">
                     <div class="col-sm-4">
-                        <a href="{{ asset('files/import_products_csv_template.xls') }}" class="tw-dw-btn tw-dw-btn-success tw-text-white" download><i class="fa fa-download"></i> @lang('lang_v1.download_template_file')</a>
+                        <a href="{{ asset('files/import_products_csv_template.csv') }}" class="tw-dw-btn tw-dw-btn-success tw-text-white" download><i class="fa fa-download"></i> @lang('lang_v1.download_template_file')</a>
                     </div>
                 </div>
             @endcomponent
@@ -278,9 +278,40 @@
                     </tr>
                     <tr>
                         <td>38</td>
-                        <td>@lang('lang_v1.sub_unit') <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
-                        <td>@lang('lang_v1.import_opening_stock_sub_unit_help')
+                        <td>Drug Schedule <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
+                        <td><strong>@lang('lang_v1.available_options'): H, H1, X, G, J, OTC</strong><br>
+                            <small class="text-muted">Schedules H, H1 and X automatically mark the product as prescription-required.</small>
                         </td>
+                    </tr>
+                    <tr>
+                        <td>39</td>
+                        <td>HSN Code <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
+                        <td>HSN / SAC tax code of the product.</td>
+                    </tr>
+                    <tr>
+                        <td>40</td>
+                        <td>Dosage Form <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
+                        <td>e.g. tablet, capsule, syrup, injection, ointment.</td>
+                    </tr>
+                    <tr>
+                        <td>41</td>
+                        <td>Storage Condition <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
+                        <td>e.g. cool_dry_place, refrigerate, room_temperature.</td>
+                    </tr>
+                    <tr>
+                        <td>42</td>
+                        <td>Manufacturer <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
+                        <td>Name of an existing manufacturer. Must match a manufacturer already created in the system.</td>
+                    </tr>
+                    <tr>
+                        <td>43</td>
+                        <td>Division <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
+                        <td>Name of an existing division. Must match a division already created in the system.</td>
+                    </tr>
+                    <tr>
+                        <td>44</td>
+                        <td>Composition <small class="text-muted">(@lang('lang_v1.optional'))</small></td>
+                        <td>Name of an existing composition / salt. Must match a composition already created in the system.</td>
                     </tr>
 
                 </table>

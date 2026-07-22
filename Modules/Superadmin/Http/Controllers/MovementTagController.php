@@ -50,8 +50,11 @@ class MovementTagController extends Controller
             )
             ->get();
 
-        $location_configs = MovementTagConfig::where('business_id', $business_id)
-            ->whereNotNull('location_id')
+        // Per-location overrides are stored under each store's OWN
+        // business_id (a location is globally unique), so load them
+        // across the whole chain rather than only the super admin's
+        // business — otherwise the saved overrides wouldn't display.
+        $location_configs = MovementTagConfig::whereNotNull('location_id')
             ->orderBy('location_id')
             ->orderBy('sort_order')
             ->get()
@@ -106,7 +109,7 @@ class MovementTagController extends Controller
 
             DB::commit();
 
-            return redirect()->back()->with('status', __('superadmin::lang.movement_tags_saved'));
+            return redirect()->back()->with('status', ['success' => 1, 'msg' => __('superadmin::lang.movement_tags_saved')]);
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
@@ -125,11 +128,21 @@ class MovementTagController extends Controller
         }
 
         try {
-            $business_id = session('user.business_id');
             $location_id = $request->input('location_id');
             $tags = $request->input('tags', []);
 
             if (empty($location_id)) {
+                return redirect()->back()->with('error', __('messages.something_went_wrong'));
+            }
+
+            // A per-location override must be stored under the business
+            // that actually OWNS the location — each store is its own
+            // business. Storing it under the super admin's session
+            // business (the old behaviour) orphaned the override, since
+            // the nightly auto-calc resolves config by the store's own
+            // business_id.
+            $business_id = \App\BusinessLocation::where('id', $location_id)->value('business_id');
+            if (empty($business_id)) {
                 return redirect()->back()->with('error', __('messages.something_went_wrong'));
             }
 
@@ -161,7 +174,7 @@ class MovementTagController extends Controller
 
             DB::commit();
 
-            return redirect()->back()->with('status', __('superadmin::lang.movement_tags_saved'));
+            return redirect()->back()->with('status', ['success' => 1, 'msg' => __('superadmin::lang.movement_tags_saved')]);
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
@@ -179,14 +192,16 @@ class MovementTagController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $business_id = session('user.business_id');
         $location_id = $request->input('location_id');
+
+        // Match the ownership rule used when saving the override.
+        $business_id = \App\BusinessLocation::where('id', $location_id)->value('business_id');
 
         MovementTagConfig::where('business_id', $business_id)
             ->where('location_id', $location_id)
             ->delete();
 
-        return redirect()->back()->with('status', __('superadmin::lang.location_override_removed'));
+        return redirect()->back()->with('status', ['success' => 1, 'msg' => __('superadmin::lang.location_override_removed')]);
     }
 
     /**
@@ -249,11 +264,19 @@ class MovementTagController extends Controller
 
             DB::beginTransaction();
 
+            $allowed_tags = ['SFM', 'FM', 'NFM', 'SM'];
+
             foreach ($stocks as $vld_id => $values) {
                 $vld = VariationLocationDetails::find($vld_id);
                 if ($vld) {
                     $vld->min_quantity = $values['min_quantity'] ?? 0;
                     $vld->max_quantity = $values['max_quantity'] ?? 0;
+
+                    // Initial (manual) movement tag set by the super admin.
+                    // Empty selection clears it; invalid values are ignored.
+                    $tag = $values['movement_tag'] ?? null;
+                    $vld->movement_tag = in_array($tag, $allowed_tags, true) ? $tag : null;
+
                     $vld->min_max_source = 'manual';
                     $vld->save();
                 }
@@ -261,7 +284,7 @@ class MovementTagController extends Controller
 
             DB::commit();
 
-            return redirect()->back()->with('status', __('superadmin::lang.stock_settings_saved'));
+            return redirect()->back()->with('status', ['success' => 1, 'msg' => __('superadmin::lang.stock_settings_saved')]);
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
@@ -281,6 +304,6 @@ class MovementTagController extends Controller
 
         Artisan::call('pos:updateMovementTags');
 
-        return redirect()->back()->with('status', __('superadmin::lang.auto_calculation_triggered'));
+        return redirect()->back()->with('status', ['success' => 1, 'msg' => __('superadmin::lang.auto_calculation_triggered')]);
     }
 }

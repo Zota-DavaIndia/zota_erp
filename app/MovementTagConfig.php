@@ -19,7 +19,29 @@ class MovementTagConfig extends Model
     }
 
     /**
-     * Get tag configs for a specific location, falling back to global (location_id=null) if none set.
+     * The chain "template" business — the super admin's own (lowest-id)
+     * business, matching the convention used elsewhere in the chain
+     * (BusinessUtil, InvoiceAssignmentController). Its GLOBAL tag config
+     * is the chain-wide default that every store inherits.
+     */
+    public static function templateBusinessId()
+    {
+        return Business::orderBy('id')->value('id');
+    }
+
+    /**
+     * Resolve the effective tag configs for a store's location, in
+     * priority order:
+     *   1. Per-location override for this exact (business, location).
+     *   2. This business's own global config (location_id = null).
+     *   3. The TEMPLATE (super admin) business's global config.
+     *
+     * Tier 3 is what makes the feature work across the whole chain:
+     * each store is its own business and normally has no config rows of
+     * its own, so without this fallback the nightly auto-calc would skip
+     * every store. The super admin configures tags once on the template
+     * business and all stores inherit them, while still allowing a
+     * per-store override via tier 1.
      */
     public static function getConfigsForLocation($business_id, $location_id)
     {
@@ -32,10 +54,25 @@ class MovementTagConfig extends Model
             return $location_configs;
         }
 
-        return self::where('business_id', $business_id)
+        $business_global = self::where('business_id', $business_id)
             ->whereNull('location_id')
             ->orderBy('sort_order')
             ->get();
+
+        if ($business_global->isNotEmpty()) {
+            return $business_global;
+        }
+
+        // Chain-wide fallback: the template business's global config.
+        $template_business_id = self::templateBusinessId();
+        if (! empty($template_business_id) && (int) $template_business_id !== (int) $business_id) {
+            return self::where('business_id', $template_business_id)
+                ->whereNull('location_id')
+                ->orderBy('sort_order')
+                ->get();
+        }
+
+        return collect();
     }
 
     /**

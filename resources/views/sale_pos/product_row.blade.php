@@ -48,6 +48,11 @@
 					<span class="tw-font-semibold tw-text-[13px] tw-leading-snug tw-block" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{!! $product_name !!}</span>
 				@endif
 				<div class="tw-text-[11px] tw-text-slate-400 tw-leading-[1.3] tw-truncate">{{ $product_sku_brand }}@if($product->enable_stock) &nbsp;·&nbsp; {{ @num_format($product->qty_available) }} {{$product->unit}}@endif</div>
+				@if(!empty($product->prescription_required))
+					<div class="tw-inline-flex tw-items-center tw-gap-1 tw-mt-1 tw-px-1.5 tw-py-0.5 tw-rounded tw-bg-red-100 tw-text-red-700 tw-text-[10px] tw-font-bold tw-uppercase tw-leading-none">
+						<i class="fas fa-prescription"></i> @lang('lang_v1.prescription_required')@if(!empty($product->drug_schedule)) (Schedule {{ $product->drug_schedule }})@endif
+					</div>
+				@endif
 			</div>
 		</div>
 

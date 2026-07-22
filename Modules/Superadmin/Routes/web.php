@@ -39,6 +39,7 @@ Route::middleware('web', 'SetSessionData', 'auth', 'language', 'AdminSidebarMenu
 
     // Master Products (superadmin-defined catalog synced to all tenants)
     Route::get('/master-products', [Modules\Superadmin\Http\Controllers\SuperadminProductController::class, 'index'])->name('master-products.index');
+    Route::post('/master-products/{id}/sync', [Modules\Superadmin\Http\Controllers\SuperadminProductController::class, 'syncToAllBusinesses'])->name('master-products.sync');
     Route::get('/master-products/{id}', [Modules\Superadmin\Http\Controllers\SuperadminProductController::class, 'show'])->name('master-products.show');
 
     // Per-business supplier assignment management
@@ -47,6 +48,9 @@ Route::middleware('web', 'SetSessionData', 'auth', 'language', 'AdminSidebarMenu
 
     // Per-business sale-return window
     Route::post('/business/{business_id}/return-policy', [Modules\Superadmin\Http\Controllers\BusinessController::class, 'saveReturnPolicy'])->name('business.return-policy');
+
+    // Per-business management-assigned store unique number
+    Route::post('/business/{business_id}/store-number', [Modules\Superadmin\Http\Controllers\BusinessController::class, 'saveStoreNumber'])->name('business.store-number');
 
     // Movement tag configs and stock min/max settings
     Route::get('/movement-tags', [Modules\Superadmin\Http\Controllers\MovementTagController::class, 'index'])->name('movement-tags.index');

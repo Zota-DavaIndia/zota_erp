@@ -162,10 +162,26 @@ class SuperadminProductController extends Controller
             }
         }
 
+        // Manufacturer / Division (pharma FKs) resolved by name per business.
+        $manufacturer_id = null;
+        if (!empty($master_product->manufacturer_id)) {
+            $mfr = \App\Manufacturer::find($master_product->manufacturer_id);
+            if ($mfr) {
+                $manufacturer_id = $this->resolveManufacturerForBusiness($business->id, $mfr->name, $created_by);
+            }
+        }
+        $division_id = null;
+        if (!empty($master_product->division_id)) {
+            $div = \App\Division::find($master_product->division_id);
+            if ($div) {
+                $division_id = $this->resolveDivisionForBusiness($business->id, $div->name, $created_by);
+            }
+        }
+
         // Create the business product copy. Field set is kept in sync
         // with syncMasterProductUpdateToBusinesses() so create and
         // update produce identical clones.
-        $product = Product::create([
+        $product = Product::create(array_merge([
             'master_product_id' => $master_product->id,
             'name' => $master_product->name,
             'business_id' => $business->id,
@@ -174,6 +190,8 @@ class SuperadminProductController extends Controller
             'secondary_unit_id' => $secondary_unit_id,
             'category_id' => $category_id,
             'brand_id' => $brand_id,
+            'manufacturer_id' => $manufacturer_id,
+            'division_id' => $division_id,
             'tax' => $tax_id,
             'composition_id' => $composition_id,
             'warranty_id' => $warranty_id,
@@ -217,7 +235,7 @@ class SuperadminProductController extends Controller
             'product_custom_field18' => $master_product->product_custom_field18,
             'product_custom_field19' => $master_product->product_custom_field19,
             'product_custom_field20' => $master_product->product_custom_field20,
-        ]);
+        ], $this->pharmaScalarFields($master_product)));
 
         // Copy variations
         $master_variations = Variation::where('product_id', $master_product->id)->get();
@@ -326,6 +344,8 @@ class SuperadminProductController extends Controller
         $composition = !empty($master->composition_id) ? Composition::find($master->composition_id) : null;
         $warranty = !empty($master->warranty_id) ? Warranty::find($master->warranty_id) : null;
         $secondary_unit = !empty($master->secondary_unit_id) ? Unit::find($master->secondary_unit_id) : null;
+        $manufacturer = !empty($master->manufacturer_id) ? \App\Manufacturer::find($master->manufacturer_id) : null;
+        $division = !empty($master->division_id) ? \App\Division::find($master->division_id) : null;
 
         foreach ($business_products as $bp) {
           try {
@@ -368,6 +388,9 @@ class SuperadminProductController extends Controller
                 $secondary_unit_id = $controller->resolveUnitForBusiness($bp->business_id, $secondary_unit, $created_by);
             }
 
+            $manufacturer_id = $manufacturer ? $controller->resolveManufacturerForBusiness($bp->business_id, $manufacturer->name, $created_by) : null;
+            $division_id = $division ? $controller->resolveDivisionForBusiness($bp->business_id, $division->name, $created_by) : null;
+
             // Resolve sub-units for this business by remapping the
             // master unit ids to the corresponding unit ids in this
             // business (same logic as on create).
@@ -386,7 +409,7 @@ class SuperadminProductController extends Controller
                 $default_purchase_sub_unit_id = $controller->resolveUnitForBusiness($bp->business_id, $mp, $created_by);
             }
 
-            $bp->update([
+            $bp->update(array_merge($controller->pharmaScalarFields($master), [
                 'name' => $master->name,
                 'barcode_type' => $master->barcode_type,
                 'image' => $master->image,
@@ -400,6 +423,8 @@ class SuperadminProductController extends Controller
                 'category_id' => $category_id,
                 'sub_category_id' => null, // sub_category is business-specific
                 'brand_id' => $brand_id,
+                'manufacturer_id' => $manufacturer_id,
+                'division_id' => $division_id,
                 'tax' => $tax_id,
                 'tax_type' => $master->tax_type,
                 'composition_id' => $composition_id,
@@ -434,7 +459,7 @@ class SuperadminProductController extends Controller
                 'purchase_sub_unit_ids' => $purchase_sub_unit_ids ?: null,
                 'default_sell_sub_unit_id' => $default_sell_sub_unit_id,
                 'default_purchase_sub_unit_id' => $default_purchase_sub_unit_id,
-            ]);
+            ]));
 
             // Sync variations (single + variable)
             $controller->syncVariationsFromMaster($master, $bp);
@@ -535,6 +560,20 @@ class SuperadminProductController extends Controller
             $target->warranty_id = null;
         }
 
+        // manufacturer_id / division_id (pharma FKs, resolved by name)
+        if (!empty($source->manufacturer_id)) {
+            $m = \App\Manufacturer::find($source->manufacturer_id);
+            $target->manufacturer_id = $m ? $this->resolveManufacturerForBusiness($target_business_id, $m->name, $created_by) : null;
+        } else {
+            $target->manufacturer_id = null;
+        }
+        if (!empty($source->division_id)) {
+            $dv = \App\Division::find($source->division_id);
+            $target->division_id = $dv ? $this->resolveDivisionForBusiness($target_business_id, $dv->name, $created_by) : null;
+        } else {
+            $target->division_id = null;
+        }
+
         // sub_unit_ids, sell/purchase whitelists + default sell/purchase sub-units
         $target->sub_unit_ids = $this->remapUnitIdList($target_business_id, $source->sub_unit_ids, $created_by) ?: null;
         $target->sell_sub_unit_ids = $this->remapUnitIdList($target_business_id, $source->sell_sub_unit_ids, $created_by) ?: null;
@@ -564,6 +603,9 @@ class SuperadminProductController extends Controller
             'alert_quantity', 'not_for_selling', 'is_inactive',
             'expiry_period_type', 'expiry_period', 'enable_sr_no',
             'preparation_time_in_minutes',
+            // pharma scalar fields
+            'drug_schedule', 'prescription_required', 'hsn_code',
+            'dosage_form', 'storage_condition',
             'product_custom_field1', 'product_custom_field2',
             'product_custom_field3', 'product_custom_field4',
             'product_custom_field5', 'product_custom_field6',
@@ -897,6 +939,49 @@ class SuperadminProductController extends Controller
     }
 
     /**
+     * Find-or-create a manufacturer in the target business by name
+     * (pharma field; same pattern as brand/category).
+     */
+    private function resolveManufacturerForBusiness($business_id, $name, $created_by)
+    {
+        $m = \App\Manufacturer::where('business_id', $business_id)->where('name', $name)->first();
+        if (!$m) {
+            $m = \App\Manufacturer::create(['business_id' => $business_id, 'name' => $name, 'created_by' => $created_by]);
+        }
+
+        return $m->id;
+    }
+
+    /**
+     * Find-or-create a division in the target business by name.
+     */
+    private function resolveDivisionForBusiness($business_id, $name, $created_by)
+    {
+        $d = \App\Division::where('business_id', $business_id)->where('name', $name)->first();
+        if (!$d) {
+            $d = \App\Division::create(['business_id' => $business_id, 'name' => $name, 'created_by' => $created_by]);
+        }
+
+        return $d->id;
+    }
+
+    /**
+     * Scalar pharma/product fields copied verbatim to store copies
+     * (business-agnostic). Manufacturer/division are FKs resolved
+     * separately by name.
+     */
+    private function pharmaScalarFields(Product $source)
+    {
+        return [
+            'drug_schedule' => $source->drug_schedule,
+            'prescription_required' => $source->prescription_required,
+            'hsn_code' => $source->hsn_code,
+            'dosage_form' => $source->dosage_form,
+            'storage_condition' => $source->storage_condition,
+        ];
+    }
+
+    /**
      * Find a tax rate in the target business by name+amount. We do
      * NOT create a new tax row because the amount is a percentage
      * that varies by jurisdiction; if no match is found the clone
@@ -965,6 +1050,44 @@ class SuperadminProductController extends Controller
             ->paginate(20);
 
         return view('superadmin::master_products.index', compact('master_products'));
+    }
+
+    /**
+     * Manually (re)sync a single master product to every active store.
+     * Reuses the same resilient engine as the automatic create/update
+     * hooks, so this is idempotent — stores that already have the copy
+     * are refreshed, missing ones are created.
+     */
+    public function syncToAllBusinesses($id)
+    {
+        if (! auth()->user()->can('superadmin')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $master = Product::where('is_master_product', 1)->findOrFail($id);
+
+        $failed = self::syncMasterProductToAllBusinesses($master);
+        $failed = is_array($failed) ? $failed : [];
+
+        $synced_count = Product::where('master_product_id', $master->id)->count();
+
+        if (empty($failed)) {
+            $msg = __('superadmin::lang.product_synced_to_all', [
+                'product' => $master->name,
+                'count' => $synced_count,
+            ]);
+        } else {
+            $msg = __('superadmin::lang.product_synced_partial', [
+                'product' => $master->name,
+                'count' => $synced_count,
+                'failed' => count($failed),
+            ]);
+        }
+
+        return redirect()->back()->with('status', [
+            'success' => empty($failed) ? 1 : 0,
+            'msg' => $msg,
+        ]);
     }
 
     /**

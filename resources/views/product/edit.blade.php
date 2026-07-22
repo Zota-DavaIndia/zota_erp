@@ -227,16 +227,7 @@
               </div>
             </div>
 
-            <div class="col-sm-4">
-              <div class="form-group">
-                {!! Form::label('product_tags', __('lang_v1.tags') . ':') !!}
-                @php
-                  $selected_tags = !empty($product->product_tags) ? explode(',', $product->product_tags) : [];
-                  $tags_options = array_combine($selected_tags, $selected_tags);
-                @endphp
-                {!! Form::select('product_tags[]', $tags_options, $selected_tags, ['class' => 'form-control select2', 'multiple', 'id' => 'product_tags', 'data-tags' => 'true', 'data-placeholder' => __('lang_v1.tags_placeholder')]); !!}
-              </div>
-            </div>
+            {{-- 'Tags' field removed — movement tags are per-store & auto-computed. --}}
 
             <div class="col-sm-4">
               <div class="form-group">
@@ -256,14 +247,7 @@
               </div>
             </div>
 
-            <div class="col-sm-4">
-              <div class="form-group">
-              <br>
-                <label>
-                  {!! Form::checkbox('prescription_required', 1, $product->prescription_required, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.prescription_required')</strong>
-                </label>
-              </div>
-            </div>
+            {{-- 'Prescription required' removed — derived from Drug Schedule (H/H1/X) on save. --}}
 
             <div class="col-sm-4">
               <div class="form-group">
@@ -294,12 +278,12 @@
               </div>
             </div>
 
-            <div class="col-sm-4" id="alert_quantity_div" @if(!$product->enable_stock) style="display:none" @endif>
-              <div class="form-group">
-                {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!} @show_tooltip(__('tooltip.alert_quantity'))
-                {!! Form::text('alert_quantity', $alert_quantity, ['class' => 'form-control input_number',
-                'placeholder' => __('product.alert_quantity') , 'min' => '0']); !!}
-              </div>
+            {{-- Alert quantity is no longer entered separately — the
+                 low-stock / reorder threshold comes from the per-store Min
+                 stock (variation_location_details.min_quantity). Kept as a
+                 hidden field to preserve the value and the toggle JS targets. --}}
+            <div id="alert_quantity_div" style="display:none;">
+                {!! Form::hidden('alert_quantity', $alert_quantity, ['id' => 'alert_quantity']); !!}
             </div>
             @if(!empty($common_settings['enable_product_warranty']))
             <div class="col-sm-4">
@@ -392,14 +376,7 @@
             </div>
           </div>
 
-          <div class="col-sm-4">
-          <div class="form-group">
-            <br>
-            <label>
-              {!! Form::checkbox('not_for_selling', 1, $product->not_for_selling, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.not_for_selling')</strong>
-            </label> @show_tooltip(__('lang_v1.tooltip_not_for_selling'))
-          </div>
-        </div>
+          {{-- 'Not for selling' removed — inverse of 'Can be sold'; derived on save. --}}
 
         <div class="clearfix"></div>
 
@@ -442,12 +419,6 @@
         @endif
 
 
-        <div class="col-sm-4">
-          <div class="form-group">
-            {!! Form::label('weight',  __('lang_v1.weight') . ':') !!}
-            {!! Form::text('weight', $product->weight, ['class' => 'form-control', 'placeholder' => __('lang_v1.weight')]); !!}
-          </div>
-        </div>
         <div class="clearfix"></div>
         
         @php
@@ -484,12 +455,6 @@
             @endif
         @endforeach
 
-        <div class="col-sm-3">
-          <div class="form-group">
-            {!! Form::label('preparation_time_in_minutes',  __('lang_v1.preparation_time_in_minutes') . ':') !!}
-            {!! Form::number('preparation_time_in_minutes', $product->preparation_time_in_minutes, ['class' => 'form-control', 'placeholder' => __('lang_v1.preparation_time_in_minutes')]); !!}
-          </div>
-        </div>
         <!--custom fields-->
         @include('layouts.partials.module_form_part')
         </div>

@@ -187,6 +187,44 @@ class ImportProductsController extends Controller
 
                     //Add not for selling
                     $product_array['not_for_selling'] = ! empty($value[35]) && $value[35] == 1 ? 1 : 0;
+                    // 'Can be sold' is the inverse of 'not_for_selling'
+                    // (kept consistent with the product form, which now
+                    // uses can_be_sold as the source of truth).
+                    $product_array['can_be_sold'] = $product_array['not_for_selling'] ? 0 : 1;
+
+                    // ---- Pharma / custom fields (optional columns 37-43),
+                    // aligning the import with the add-product form. All are
+                    // isset()-guarded so older CSV templates still import.
+                    $drug_schedule = isset($value[37]) ? trim($value[37]) : '';
+                    $valid_schedules = ['H', 'H1', 'X', 'G', 'J', 'OTC'];
+                    $product_array['drug_schedule'] = in_array($drug_schedule, $valid_schedules, true) ? $drug_schedule : null;
+
+                    // 'Prescription required' is derived from Drug Schedule
+                    // (H, H1, X are prescription-only) — same rule as the form.
+                    $product_array['prescription_required'] = in_array($product_array['drug_schedule'], ['H', 'H1', 'X'], true) ? 1 : 0;
+
+                    $product_array['hsn_code'] = isset($value[38]) && trim($value[38]) !== '' ? trim($value[38]) : null;
+                    $product_array['dosage_form'] = isset($value[39]) && trim($value[39]) !== '' ? trim($value[39]) : null;
+                    $product_array['storage_condition'] = isset($value[40]) && trim($value[40]) !== '' ? trim($value[40]) : null;
+
+                    // Manufacturer / Division / Composition resolved by name
+                    // within this business (must already exist; unknown names
+                    // are left null rather than auto-created).
+                    $product_array['manufacturer_id'] = null;
+                    if (isset($value[41]) && trim($value[41]) !== '') {
+                        $manufacturer = \App\Manufacturer::where('business_id', $business_id)->where('name', trim($value[41]))->first();
+                        $product_array['manufacturer_id'] = $manufacturer->id ?? null;
+                    }
+                    $product_array['division_id'] = null;
+                    if (isset($value[42]) && trim($value[42]) !== '') {
+                        $division = \App\Division::where('business_id', $business_id)->where('name', trim($value[42]))->first();
+                        $product_array['division_id'] = $division->id ?? null;
+                    }
+                    $product_array['composition_id'] = null;
+                    if (isset($value[43]) && trim($value[43]) !== '') {
+                        $composition = \App\Composition::where('business_id', $business_id)->where('name', trim($value[43]))->first();
+                        $product_array['composition_id'] = $composition->id ?? null;
+                    }
 
                     //Add enable stock
                     $enable_stock = trim($value[7]);
@@ -662,6 +700,14 @@ class ImportProductsController extends Controller
                     throw new \Exception($error_msg);
                 }
 
+                // When the super admin imports, each product becomes a
+                // master product and is synced to every store — exactly
+                // like a product created through the form. Collected here
+                // and synced AFTER commit (matching the form's post-commit
+                // pattern) so the whole import stays in one transaction.
+                $is_superadmin = $this->isSuperadmin();
+                $master_product_ids = [];
+
                 if (! empty($formated_data)) {
                     foreach ($formated_data as $index => $product_data) {
                         $variation_data = $product_data['variation'];
@@ -738,6 +784,13 @@ class ImportProductsController extends Controller
                                 $this->addOpeningStockForVariable($variation_data, $product, $business_id);
                             }
                         }
+
+                        // Flag as master product for chain-wide sync (superadmin only).
+                        if ($is_superadmin) {
+                            $product->is_master_product = 1;
+                            $product->save();
+                            $master_product_ids[] = $product->id;
+                        }
                     }
                 }
             }
@@ -747,6 +800,28 @@ class ImportProductsController extends Controller
             ];
 
             DB::commit();
+
+            // Post-commit: sync each imported master product to all stores
+            // (same resilient engine the form uses; never blocks the import).
+            if (! empty($master_product_ids) && $this->moduleUtil->isSuperadminInstalled()) {
+                $sync_failed = 0;
+                foreach ($master_product_ids as $mp_id) {
+                    try {
+                        $mp = Product::find($mp_id);
+                        if ($mp) {
+                            $failed = \Modules\Superadmin\Http\Controllers\SuperadminProductController::syncMasterProductToAllBusinesses($mp);
+                            $sync_failed += is_array($failed) ? count($failed) : 0;
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error('Import master-product sync failed for product '.$mp_id.': '.$e->getMessage());
+                        $sync_failed++;
+                    }
+                }
+                $output['msg'] .= ' '.__('product.imported_synced_to_stores', ['count' => count($master_product_ids)]);
+                if ($sync_failed > 0) {
+                    $output['msg'] .= ' ('.$sync_failed.' store sync issue(s) — see logs)';
+                }
+            }
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
@@ -759,6 +834,29 @@ class ImportProductsController extends Controller
         }
 
         return redirect('import-products')->with('status', $output);
+    }
+
+    /**
+     * Whether the current user is a chain super admin (username in
+     * config('constants.administrator_usernames')) — mirrors
+     * ProductController::isSuperadmin so imported products follow the
+     * same master-product rule as form-created ones.
+     */
+    private function isSuperadmin()
+    {
+        $user = auth()->user();
+        if (empty($user)) {
+            return false;
+        }
+        $administrator_list = config('constants.administrator_usernames');
+        if (empty($administrator_list)) {
+            return false;
+        }
+
+        return in_array(
+            strtolower($user->username),
+            explode(',', strtolower($administrator_list))
+        );
     }
 
     private function calculateVariationPrices($dpp_exc_tax, $dpp_inc_tax, $selling_price, $tax_amount, $tax_type, $margin)

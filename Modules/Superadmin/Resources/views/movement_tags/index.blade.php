@@ -15,7 +15,7 @@
         @if (session('status'))
             <div class="alert alert-success alert-dismissible">
                 <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                {{ session('status') }}
+                {{ is_array(session('status')) ? session('status.msg') : session('status') }}
             </div>
         @endif
         @if (session('error'))

@@ -190,12 +190,10 @@
             </div>
         </div>
 
-        <div class="col-sm-4">
-            <div class="form-group">
-                {!! Form::label('product_tags', __('lang_v1.tags') . ':') !!}
-                {!! Form::select('product_tags[]', [], null, ['class' => 'form-control select2', 'multiple', 'id' => 'product_tags', 'data-tags' => 'true', 'data-placeholder' => __('lang_v1.tags_placeholder')]); !!}
-            </div>
-        </div>
+        {{-- 'Tags' field removed — movement tags are managed per-store
+             (Superadmin → Movement Tags → Stock Min/Max Settings) and
+             auto-computed every 90 days, so a product-level tag field is
+             redundant. --}}
 
         @php
         $default_location = null;
@@ -222,14 +220,9 @@
             </div>
         </div>
 
-        <div class="col-sm-4">
-            <div class="form-group">
-                <br>
-                <label>
-                    {!! Form::checkbox('prescription_required', 1, !empty($duplicate_product) ? $duplicate_product->prescription_required : false, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.prescription_required')</strong>
-                </label>
-            </div>
-        </div>
+        {{-- 'Prescription required' checkbox removed — it is now derived
+             automatically from the Drug Schedule (H, H1, X require a
+             prescription). Set on save in ProductController. --}}
 
         <div class="col-sm-4">
             <div class="form-group">
@@ -260,12 +253,15 @@
             </div>
         </div>
 
-        <div class="col-sm-4 @if(!empty($duplicate_product) && $duplicate_product->enable_stock == 0) hide @endif" id="alert_quantity_div">
-            <div class="form-group">
-                {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!} @show_tooltip(__('tooltip.alert_quantity'))
-                {!! Form::text('alert_quantity', !empty($duplicate_product->alert_quantity) ? @format_quantity($duplicate_product->alert_quantity) : null , ['class' => 'form-control input_number',
-                'placeholder' => __('product.alert_quantity'), 'min' => '0']); !!}
-            </div>
+        {{-- Alert quantity is no longer entered separately: the low-stock
+             / reorder threshold now comes from the per-store Min stock
+             (variation_location_details.min_quantity), set via Superadmin
+             → Movement Tags → Stock Min/Max Settings (or the 90-day auto
+             calc). Kept as a hidden field so the value round-trips and
+             the enable-stock toggle JS (#alert_quantity_div / #alert_quantity)
+             still has its targets. --}}
+        <div id="alert_quantity_div" style="display:none;">
+            {!! Form::hidden('alert_quantity', !empty($duplicate_product->alert_quantity) ? @format_quantity($duplicate_product->alert_quantity) : null, ['id' => 'alert_quantity']); !!}
         </div>
         @if(!empty($common_settings['enable_product_warranty']))
         <div class="col-sm-4">
@@ -360,14 +356,9 @@
             </div>
         </div>
 
-        <div class="col-sm-4">
-            <div class="form-group">
-                <br>
-                <label>
-                    {!! Form::checkbox('not_for_selling', 1, !(empty($duplicate_product)) ? $duplicate_product->not_for_selling : false, ['class' => 'input-icheck']); !!} <strong>@lang('lang_v1.not_for_selling')</strong>
-                </label> @show_tooltip(__('lang_v1.tooltip_not_for_selling'))
-            </div>
-        </div>
+        {{-- 'Not for selling' checkbox removed — it is the inverse of
+             'Can be sold' above. not_for_selling is derived from
+             can_be_sold on save (not_for_selling = can_be_sold ? 0 : 1). --}}
 
         <div class="clearfix"></div>
 
@@ -400,12 +391,6 @@
         @endforeach
         @endif
 
-        <div class="col-sm-4">
-            <div class="form-group">
-                {!! Form::label('weight', __('lang_v1.weight') . ':') !!}
-                {!! Form::text('weight', !empty($duplicate_product->weight) ? $duplicate_product->weight : null, ['class' => 'form-control', 'placeholder' => __('lang_v1.weight')]); !!}
-            </div>
-        </div>
         @php
         $custom_labels = json_decode(session('business.custom_labels'), true);
         $product_custom_fields = !empty($custom_labels['product']) ? $custom_labels['product'] : [];
@@ -447,12 +432,6 @@
             @endif
         @endforeach
 
-        <div class="col-sm-3">
-            <div class="form-group">
-                {!! Form::label('preparation_time_in_minutes', __('lang_v1.preparation_time_in_minutes') . ':') !!}
-                {!! Form::number('preparation_time_in_minutes', !empty($duplicate_product->preparation_time_in_minutes) ? $duplicate_product->preparation_time_in_minutes : null, ['class' => 'form-control', 'placeholder' => __('lang_v1.preparation_time_in_minutes')]); !!}
-            </div>
-        </div>
         <!--custom fields-->
         <div class="clearfix"></div>
         @include('layouts.partials.module_form_part')

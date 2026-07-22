@@ -187,6 +187,25 @@
     <div class="box">
         <div class="box-header">
                 <h3 class="box-title">
+                    <strong><i class="fa fa-hashtag margin-r-5"></i>
+                    @lang( 'superadmin::lang.store_unique_number' )</strong>
+                </h3>
+        </div>
+        <div class="box-body">
+            {!! Form::open(['url' => action([\Modules\Superadmin\Http\Controllers\BusinessController::class, 'saveStoreNumber'], [$business->id]), 'method' => 'post', 'class' => 'form-inline']) !!}
+                <div class="form-group">
+                    {!! Form::label('store_unique_number', __('superadmin::lang.store_unique_number') . ':') !!}
+                    {!! Form::text('store_unique_number', $business->store_unique_number, ['class' => 'form-control', 'style' => 'width:220px', 'placeholder' => __('superadmin::lang.store_unique_number_placeholder')]) !!}
+                    <button type="submit" class="btn btn-primary">@lang('messages.save')</button>
+                </div>
+                <p class="help-block">@lang('superadmin::lang.store_unique_number_help')</p>
+            {!! Form::close() !!}
+        </div>
+    </div>
+
+    <div class="box">
+        <div class="box-header">
+                <h3 class="box-title">
                     <strong><i class="fa fa-undo margin-r-5"></i>
                     @lang( 'superadmin::lang.sell_return_policy' )</strong>
                 </h3>

@@ -78,12 +78,11 @@
           </div>
         </div>
         <div class="clearfix"></div>
-        <div class="col-sm-4" id="alert_quantity_div">
-          <div class="form-group">
-            {!! Form::label('alert_quantity', __('product.alert_quantity') . ':') !!}
-            {!! Form::text('alert_quantity', null, ['class' => 'form-control input_number',
-            'placeholder' => __('product.alert_quantity'), 'min' => '0']); !!}
-          </div>
+        {{-- Alert quantity is no longer entered separately — the low-stock
+             threshold comes from the per-store Min stock. Hidden field kept
+             for value round-trip + toggle JS targets. --}}
+        <div id="alert_quantity_div" style="display:none;">
+            {!! Form::hidden('alert_quantity', null, ['id' => 'alert_quantity']); !!}
         </div>
         @if(!empty($common_settings['enable_product_warranty']))
         <div class="col-sm-4">

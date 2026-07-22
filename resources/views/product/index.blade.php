@@ -702,10 +702,9 @@
                     movement_analysis_table = $('#movement_analysis_table').DataTable({
                         processing: true,
                         serverSide: true,
-                        scrollY: "75vh",
+                        autoWidth: false,
                         scrollX: true,
                         scrollCollapse: true,
-                        fixedHeader: false,
                         ajax: {
                             url: '/products/movement-analysis',
                             data: function(d) {

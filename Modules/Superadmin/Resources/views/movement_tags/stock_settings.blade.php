@@ -15,7 +15,7 @@
         @if (session('status'))
             <div class="alert alert-success alert-dismissible">
                 <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                {{ session('status') }}
+                {{ is_array(session('status')) ? session('status.msg') : session('status') }}
             </div>
         @endif
 
@@ -83,20 +83,15 @@
                                             </span>
                                         </td>
                                         <td>
-                                            @if($row->movement_tag)
-                                                @php
-                                                    $badge_class = match($row->movement_tag) {
-                                                        'SFM' => 'label-success',
-                                                        'FM' => 'label-info',
-                                                        'NFM' => 'label-warning',
-                                                        'SM' => 'label-danger',
-                                                        default => 'label-default',
-                                                    };
-                                                @endphp
-                                                <span class="label {{ $badge_class }}">{{ $row->movement_tag }}</span>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
+                                            {{-- Editable initial movement tag (super admin bootstrap).
+                                                 Auto-retagging overwrites this once the product has
+                                                 enough sales history at this store. --}}
+                                            <select name="stocks[{{ $row->id }}][movement_tag]" class="form-control input-sm" style="width: 90px;">
+                                                <option value="" @if(empty($row->movement_tag)) selected @endif>&mdash;</option>
+                                                @foreach(['SFM' => 'SFM', 'FM' => 'FM', 'NFM' => 'NFM', 'SM' => 'SM'] as $code => $label)
+                                                    <option value="{{ $code }}" @if($row->movement_tag == $code) selected @endif>{{ $label }}</option>
+                                                @endforeach
+                                            </select>
                                         </td>
                                         <td>
                                             <input type="number" name="stocks[{{ $row->id }}][min_quantity]"

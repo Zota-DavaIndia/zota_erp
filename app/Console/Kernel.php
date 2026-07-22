@@ -33,7 +33,13 @@ class Kernel extends ConsoleKernel
 
             $schedule->command('pos:generateRecurringExpense')->dailyAt('02:00');
 
-            $schedule->command('pos:updateMovementTags')->dailyAt('03:00');
+            // Auto-retag every product per store every 90 days
+            // (1st day of each quarter — Jan/Apr/Jul/Oct — at 03:00),
+            // recomputing BOTH the movement tag AND min/max from sales.
+            // The super admin's initial manual tag/min-max is the
+            // bootstrap and is retained until a product has 90 days of
+            // sales history, after which each 90-day run takes over.
+            $schedule->command('pos:updateMovementTags')->cron('0 3 1 1,4,7,10 *');
         }
 
         if ($env === 'demo') {

@@ -315,6 +315,12 @@ class BusinessController extends BaseController
             abort(403, 'Unauthorized action.');
         }
 
+        // The management-assigned store unique number must be unique
+        // across all businesses when provided.
+        $request->validate([
+            'store_unique_number' => 'nullable|string|max:191|unique:business,store_unique_number',
+        ]);
+
         try {
             DB::beginTransaction();
 
@@ -337,7 +343,13 @@ class BusinessController extends BaseController
                 $user = User::create_user($owner_details);
             }
 
-            $business_details = $request->only(['name', 'start_date', 'currency_id', 'tax_label_1', 'tax_number_1', 'tax_label_2', 'tax_number_2', 'time_zone', 'accounting_method', 'fy_start_month']);
+            $business_details = $request->only(['name', 'store_unique_number', 'start_date', 'currency_id', 'tax_label_1', 'tax_number_1', 'tax_label_2', 'tax_number_2', 'time_zone', 'accounting_method', 'fy_start_month']);
+
+            // Normalise empty string to null so the unique index treats
+            // "not set" stores consistently (multiple NULLs are allowed).
+            if (empty($business_details['store_unique_number'])) {
+                $business_details['store_unique_number'] = null;
+            }
 
             $business_location = $request->only(['name', 'country', 'state', 'city', 'zip_code', 'landmark', 'website', 'mobile', 'alternate_number']);
 
@@ -691,6 +703,32 @@ class BusinessController extends BaseController
 
     public function update(Request $request)
     {
+    }
+
+    /**
+     * Update the management-assigned store unique number for a
+     * business (from the business detail page). Blank clears it;
+     * must stay unique across businesses.
+     */
+    public function saveStoreNumber(Request $request, $business_id)
+    {
+        if (! auth()->user()->can('superadmin')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $request->validate([
+            'store_unique_number' => 'nullable|string|max:191|unique:business,store_unique_number,'.$business_id.',id',
+        ]);
+
+        $business = Business::findOrFail($business_id);
+        $number = trim((string) $request->input('store_unique_number'));
+        $business->store_unique_number = $number !== '' ? $number : null;
+        $business->save();
+
+        return redirect()->back()->with('status', [
+            'success' => 1,
+            'msg' => __('superadmin::lang.store_number_updated', ['business' => $business->name]),
+        ]);
     }
 
     /**

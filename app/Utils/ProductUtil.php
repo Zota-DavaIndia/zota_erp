@@ -506,6 +506,8 @@ class ProductUtil extends Util
             'p.enable_sr_no',
             'p.type as product_type',
             'p.name as product_actual_name',
+            'p.prescription_required',
+            'p.drug_schedule',
             'p.warranty_id',
             'p.image as product_image',
             'p.product_custom_field1',
@@ -1925,6 +1927,7 @@ class ProductUtil extends Util
                   WHERE (transactions.status='received' OR transactions.type='purchase_return')  AND transactions.location_id=vld.location_id 
                   AND (pl.variation_id=variations.id)) as stock_price"),
             DB::raw('SUM(vld.qty_available) as stock'),
+            DB::raw('SUM(vld.min_quantity) as stock_min'),
             'variations.sub_sku as sku',
             'p.name as product',
             'p.type',
@@ -2444,8 +2447,22 @@ class ProductUtil extends Util
                 ->where('p.enable_stock', 1)
                 ->where('p.is_inactive', 0)
                 ->whereNull('v.deleted_at')
-                ->whereNotNull('p.alert_quantity')
-                ->whereRaw('variation_location_details.qty_available <= p.alert_quantity');
+                // Low-stock trigger: prefer the per-store movement min
+                // stock when configured; else fall back to the legacy
+                // per-product alert_quantity.
+                ->where(function ($outer) {
+                    $outer->where(function ($q) {
+                        $q->where('variation_location_details.min_quantity', '>', 0)
+                          ->whereRaw('variation_location_details.qty_available <= variation_location_details.min_quantity');
+                    })->orWhere(function ($q) {
+                        $q->where(function ($q2) {
+                            $q2->whereNull('variation_location_details.min_quantity')
+                               ->orWhere('variation_location_details.min_quantity', '<=', 0);
+                        })
+                          ->whereNotNull('p.alert_quantity')
+                          ->whereRaw('variation_location_details.qty_available <= p.alert_quantity');
+                    });
+                });
 
              //Check for permitted locations of a user
              if(!empty($permitted_locations)){

@@ -117,9 +117,17 @@ class ProductController extends Controller
                 ->leftJoin('categories as c2', 'products.sub_category_id', '=', 'c2.id')
                 ->leftJoin('tax_rates', 'products.tax', '=', 'tax_rates.id')
                 ->join('variations as v', 'v.product_id', '=', 'products.id')
-                ->leftJoin('variation_location_details as vld', function ($join) use ($permitted_locations) {
+                ->leftJoin('variation_location_details as vld', function ($join) use ($permitted_locations, $location_id) {
                     $join->on('vld.variation_id', '=', 'v.id');
-                    if ($permitted_locations != 'all') {
+                    // When a specific store/location is selected, scope
+                    // the stock/min/max/tag aggregates to THAT location
+                    // so the columns reflect the chosen store rather than
+                    // summing across every permitted location. Otherwise
+                    // restrict to the user's permitted locations as before.
+                    if (! empty($location_id) && $location_id != 'none'
+                        && ($permitted_locations == 'all' || in_array($location_id, $permitted_locations))) {
+                        $join->where('vld.location_id', '=', $location_id);
+                    } elseif ($permitted_locations != 'all') {
                         $join->whereIn('vld.location_id', $permitted_locations);
                     }
                 })
@@ -617,8 +625,12 @@ class ProductController extends Controller
             ->whereNull('v.deleted_at')
             ->where('products.business_id', $business_id)
             ->where('products.type', '!=', 'modifier')
-            ->where('products.enable_stock', 1)
-            ->whereNotNull('vld.movement_tag');
+            ->where('products.enable_stock', 1);
+        // NOTE: no longer filtered to already-tagged products. Every
+        // stock-enabled product is listed with its CURRENT tag (or "—"
+        // until sales assign one), so the store can see stock, min/max
+        // and the next-update date even before a tag exists. A specific
+        // tag can still be filtered via the movement_tag dropdown below.
 
         $location_id = request()->get('location_id', null);
         if (! empty($location_id) && $location_id != 'none') {
@@ -644,6 +656,12 @@ class ProductController extends Controller
 
         return Datatables::of($products)
             ->addColumn('movement_tag_display', function ($row) {
+                // Untagged (no sales yet / <90 days history) → show a
+                // neutral dash rather than an empty badge.
+                if (empty($row->movement_tag)) {
+                    return '<span class="text-muted">&mdash;</span>';
+                }
+
                 $badge_map = [
                     'SFM' => 'label-success',
                     'FM' => 'label-info',
@@ -710,11 +728,18 @@ class ProductController extends Controller
             $product_details['created_by'] = $request->session()->get('user.id');
 
             $product_details['enable_stock'] = (! empty($request->input('enable_stock')) && $request->input('enable_stock') == 1) ? 1 : 0;
-            $product_details['not_for_selling'] = (! empty($request->input('not_for_selling')) && $request->input('not_for_selling') == 1) ? 1 : 0;
-            $product_details['prescription_required'] = (! empty($request->input('prescription_required')) && $request->input('prescription_required') == 1) ? 1 : 0;
             $product_details['can_be_purchased'] = (! empty($request->input('can_be_purchased')) && $request->input('can_be_purchased') == 1) ? 1 : 0;
             $product_details['can_be_stored'] = (! empty($request->input('can_be_stored')) && $request->input('can_be_stored') == 1) ? 1 : 0;
             $product_details['can_be_sold'] = (! empty($request->input('can_be_sold')) && $request->input('can_be_sold') == 1) ? 1 : 0;
+
+            // 'Not for selling' is the inverse of 'Can be sold' — derived,
+            // no longer a separate checkbox. Keeps the existing
+            // not_for_selling-based POS filtering/scopes working.
+            $product_details['not_for_selling'] = $product_details['can_be_sold'] ? 0 : 1;
+
+            // 'Prescription required' is derived from the Drug Schedule:
+            // schedules H, H1 and X are prescription-only.
+            $product_details['prescription_required'] = in_array($request->input('drug_schedule'), ['H', 'H1', 'X'], true) ? 1 : 0;
 
             if (! empty($request->input('product_tags'))) {
                 $product_details['product_tags'] = implode(',', $request->input('product_tags'));
@@ -1075,7 +1100,9 @@ class ProductController extends Controller
             $product->sku = $product_details['sku'];
             $product->alert_quantity = ! empty($product_details['alert_quantity']) ? $this->productUtil->num_uf($product_details['alert_quantity']) : $product_details['alert_quantity'];
             $product->tax_type = $product_details['tax_type'];
-            $product->weight = $product_details['weight'];
+            // 'weight' was removed from the product form — keep the existing
+            // value when the request no longer submits it.
+            $product->weight = $product_details['weight'] ?? $product->weight;
             $product->product_custom_field1 = $product_details['product_custom_field1'] ?? '';
             $product->product_custom_field2 = $product_details['product_custom_field2'] ?? '';
             $product->product_custom_field3 = $product_details['product_custom_field3'] ?? '';
@@ -1099,7 +1126,9 @@ class ProductController extends Controller
 
             $product->product_description = $product_details['product_description'];
             $product->sub_unit_ids = ! empty($product_details['sub_unit_ids']) ? $product_details['sub_unit_ids'] : null;
-            $product->preparation_time_in_minutes = $product_details['preparation_time_in_minutes'];
+            // 'Service staff timer' (preparation_time_in_minutes) was removed
+            // from the product form — keep the existing value when absent.
+            $product->preparation_time_in_minutes = $product_details['preparation_time_in_minutes'] ?? $product->preparation_time_in_minutes;
             $product->warranty_id = ! empty($request->input('warranty_id')) ? $request->input('warranty_id') : null;
             $product->secondary_unit_id = ! empty($request->input('secondary_unit_id')) ? $request->input('secondary_unit_id') : null;
 
@@ -1122,11 +1151,15 @@ class ProductController extends Controller
                 $product->enable_stock = 0;
             }
 
-            $product->not_for_selling = (! empty($request->input('not_for_selling')) && $request->input('not_for_selling') == 1) ? 1 : 0;
-            $product->prescription_required = (! empty($request->input('prescription_required')) && $request->input('prescription_required') == 1) ? 1 : 0;
             $product->can_be_purchased = (! empty($request->input('can_be_purchased')) && $request->input('can_be_purchased') == 1) ? 1 : 0;
             $product->can_be_stored = (! empty($request->input('can_be_stored')) && $request->input('can_be_stored') == 1) ? 1 : 0;
             $product->can_be_sold = (! empty($request->input('can_be_sold')) && $request->input('can_be_sold') == 1) ? 1 : 0;
+
+            // 'Not for selling' = inverse of 'Can be sold' (derived).
+            $product->not_for_selling = $product->can_be_sold ? 0 : 1;
+
+            // 'Prescription required' derived from Drug Schedule (H/H1/X).
+            $product->prescription_required = in_array($request->input('drug_schedule'), ['H', 'H1', 'X'], true) ? 1 : 0;
 
             if (! empty($request->input('sub_category_id'))) {
                 $product->sub_category_id = $request->input('sub_category_id');

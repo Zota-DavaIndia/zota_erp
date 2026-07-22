@@ -72,11 +72,47 @@ class UpdateMovementTags extends Command
                 return $item->product_id . '_' . $item->variation_id;
             });
 
+        // Earliest final-sale date per variation at this location, over
+        // ALL time (not just the 90-day window). Used as the gate: the
+        // requirement is that the super admin sets the initial min/max
+        // and sales only take over AFTER 90 days of history exist for
+        // that product at that store. A product without 90 days of
+        // sales (including brand-new or never-sold products) keeps its
+        // manual value untouched.
+        $first_sale = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as t', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $business_id)
+            ->where('t.location_id', $location_id)
+            ->where('t.type', 'sell')
+            ->where('t.status', 'final')
+            ->select(
+                'tsl.product_id',
+                'tsl.variation_id',
+                DB::raw('MIN(t.transaction_date) as first_sold_at')
+            )
+            ->groupBy('tsl.product_id', 'tsl.variation_id')
+            ->get()
+            ->keyBy(function ($item) {
+                return $item->product_id . '_' . $item->variation_id;
+            });
+
+        $history_cutoff = Carbon::now()->subDays(90);
+
         // Process all variation_location_details for this location
         VariationLocationDetails::where('location_id', $location_id)
-            ->chunkById(200, function ($vld_records) use ($sales_data, $configs) {
+            ->chunkById(200, function ($vld_records) use ($sales_data, $first_sale, $history_cutoff, $configs) {
                 foreach ($vld_records as $vld) {
                     $key = $vld->product_id . '_' . $vld->variation_id;
+
+                    // 90-day history gate: only auto-manage this product
+                    // at this store once its first sale is at least 90
+                    // days old. Until then leave the super admin's
+                    // initial (manual) min/max in place.
+                    $first_sold_at = isset($first_sale[$key]) ? $first_sale[$key]->first_sold_at : null;
+                    if (empty($first_sold_at) || Carbon::parse($first_sold_at)->gt($history_cutoff)) {
+                        continue;
+                    }
+
                     $total_sold_90 = isset($sales_data[$key]) ? (float) $sales_data[$key]->total_sold : 0;
 
                     $daily_avg = $total_sold_90 / 90;

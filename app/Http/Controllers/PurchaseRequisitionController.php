@@ -398,8 +398,24 @@ class PurchaseRequisitionController extends Controller
                     ->where('p.enable_stock', 1)
                     ->where('p.is_inactive', 0)
                     ->whereNull('v.deleted_at')
-                    ->whereNotNull('p.alert_quantity')
-                    ->whereRaw('variation_location_details.qty_available <= p.alert_quantity');
+                    // Reorder trigger: prefer the per-store movement min
+                    // stock when one is configured (qty at/below min);
+                    // otherwise fall back to the legacy per-product
+                    // alert_quantity threshold so nothing regresses for
+                    // products without a min set.
+                    ->where(function ($outer) {
+                        $outer->where(function ($q) {
+                            $q->where('variation_location_details.min_quantity', '>', 0)
+                              ->whereRaw('variation_location_details.qty_available <= variation_location_details.min_quantity');
+                        })->orWhere(function ($q) {
+                            $q->where(function ($q2) {
+                                $q2->whereNull('variation_location_details.min_quantity')
+                                   ->orWhere('variation_location_details.min_quantity', '<=', 0);
+                            })
+                              ->whereNotNull('p.alert_quantity')
+                              ->whereRaw('variation_location_details.qty_available <= p.alert_quantity');
+                        });
+                    });
 
             //Check for permitted locations of a user
             $permitted_locations = auth()->user()->permitted_locations();
@@ -428,6 +444,9 @@ class PurchaseRequisitionController extends Controller
                 'v.sub_sku',
                 'l.name as location',
                 'variation_location_details.qty_available as stock',
+                'variation_location_details.min_quantity as min_quantity',
+                'variation_location_details.max_quantity as max_quantity',
+                'variation_location_details.movement_tag as movement_tag',
                 'u.short_name as unit',
                 'v.id as variation_id',
                 'p.id as product_id',

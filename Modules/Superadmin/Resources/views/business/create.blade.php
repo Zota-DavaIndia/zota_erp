@@ -15,6 +15,14 @@
                 {!! Form::open(['url' => action([\Modules\Superadmin\Http\Controllers\BusinessController::class, 'store']), 'method' => 'post', 'id' => 'business_register_form','files' => true ]) !!}
                     @include('business.partials.register_form')
                     <div class="clearfix"></div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            {!! Form::label('store_unique_number', __('superadmin::lang.store_unique_number') . ':') !!}
+                            {!! Form::text('store_unique_number', null, ['class' => 'form-control', 'placeholder' => __('superadmin::lang.store_unique_number_placeholder')]); !!}
+                            <p class="help-block">@lang('superadmin::lang.store_unique_number_help')</p>
+                        </div>
+                    </div>
+                    <div class="clearfix"></div>
                     <div class="col-md-12"><hr></div>
                     <div class="col-md-12">
                         <div class="form-group">

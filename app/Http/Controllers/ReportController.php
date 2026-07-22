@@ -460,7 +460,15 @@ class ReportController extends Controller
                     return  '<span class="potential_profit" data-orig-value="'.(float) $potential_profit.'" > '.$this->transactionUtil->num_f($potential_profit, true).'</span>';
                 })
                 ->setRowClass(function ($row) {
-                    return $row->enable_stock && $row->stock <= $row->alert_quantity ? 'bg-danger' : '';
+                    // Low-stock highlight now uses the per-store Min stock
+                    // (movement min/max) when set, falling back to the legacy
+                    // per-product alert_quantity — consistent with the
+                    // dashboard alert and requisition auto-suggest.
+                    $below = ! empty($row->stock_min) && $row->stock_min > 0
+                        ? $row->stock <= $row->stock_min
+                        : (! is_null($row->alert_quantity) && $row->stock <= $row->alert_quantity);
+
+                    return $row->enable_stock && $below ? 'bg-danger' : '';
                 })
                 ->filterColumn('variation', function ($query, $keyword) {
                     $query->whereRaw("CONCAT(COALESCE(pv.name, ''), '-', COALESCE(variations.name, '')) like ?", ["%{$keyword}%"]);

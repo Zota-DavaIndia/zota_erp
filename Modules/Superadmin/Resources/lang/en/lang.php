@@ -359,4 +359,16 @@ return [
     'run_auto_calculation' => 'Run Auto Calculation',
     'confirm_auto_calculate' => 'This will recalculate movement tags and min/max for all products across all stores based on last 90 days sales. Continue?',
     'auto_calculation_triggered' => 'Auto-calculation completed. Movement tags and min/max stock updated.',
+
+    // Management-assigned store unique number
+    'store_unique_number' => 'Store Unique Number',
+    'store_unique_number_placeholder' => 'e.g. DAVA-GJ-001',
+    'store_unique_number_help' => 'A unique identifier for this store, assigned manually by management. Must be unique across all stores. Leave blank if not assigned yet.',
+    'store_number_updated' => 'Store unique number updated for :business',
+
+    // Manual master-product sync
+    'sync_to_all_stores' => 'Sync to all stores',
+    'confirm_sync_to_all' => 'Sync this product to every active store now? Stores that do not have it yet will get it (starting at zero stock). Stores that already have it are left unchanged — their existing stock is NOT affected.',
+    'product_synced_to_all' => ':product is now present in all stores (:count store copies). Existing stock was left unchanged.',
+    'product_synced_partial' => ':product synced (:count store copies), but :failed store(s) failed — see logs. Existing stock was left unchanged.',
 ];
