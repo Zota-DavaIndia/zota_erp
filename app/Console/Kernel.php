@@ -46,6 +46,11 @@ class Kernel extends ConsoleKernel
             // (1-30 days) and has open auto-requisitions. withoutOverlapping
             // guards against a long run colliding with the next day's tick.
             $schedule->command('pos:autoRaisePurchaseOrders')->dailyAt('03:30')->withoutOverlapping();
+            // Flag any open support ticket past its configured TAT as Delayed.
+            // This is a safety net - the same check also runs lazily whenever
+            // the Support Ticket dashboard/list is viewed, so it stays correct
+            // even where a cron scheduler isn't configured.
+            $schedule->command('supportticket:flag-delayed')->everyThirtyMinutes();
         }
 
         if ($env === 'demo') {

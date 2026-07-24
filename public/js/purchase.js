@@ -785,6 +785,49 @@ $(document).ready(function() {
                 prev_price_span.text(__currency_trans_from_en(base_prev * multiplier, true));
             }
         }
+
+        // The Purchase Quantity max-value rule was rendered for whichever
+        // unit was pre-selected on page load - switching units (e.g. from
+        // Baby Box to a more granular unit to receive a small ticket-resend
+        // remainder) must rescale it too, or the rule stays stuck at the old
+        // unit's number while the field now expects a value in the new unit.
+        var qty_element = tr.find('.purchase_quantity');
+        var max_quantity_base = parseFloat(qty_element.attr('data-max-quantity-base'));
+        if (!isNaN(max_quantity_base) && !isNaN(multiplier) && multiplier > 0) {
+            var new_max = max_quantity_base / multiplier;
+            var msg_template = (typeof LANG !== 'undefined' && LANG.max_quantity_quantity_allowed)
+                ? LANG.max_quantity_quantity_allowed
+                : 'Max :quantity allowed';
+            var new_msg = msg_template.replace(':quantity', __number_f(new_max, false));
+
+            // Overwrite the raw HTML5 metadata attributes directly - this is
+            // what jQuery Validate's attribute-rule parser reads on every
+            // validation pass, so it's the most reliable way to change an
+            // existing data-rule-* rule (more reliable than the .rules()
+            // add/remove API, which manages a separate "programmatically
+            // added" rule set alongside the metadata one).
+            qty_element.attr('data-rule-max-value', new_max);
+            qty_element.attr('data-msg-max-value', new_msg);
+
+            try {
+                qty_element.rules('remove', 'max-value');
+                qty_element.rules('add', {
+                    'max-value': new_max,
+                    messages: {
+                        'max-value': new_msg,
+                    },
+                });
+            } catch (e) {
+                // Older/differently-configured jquery-validate builds can
+                // throw here (e.g. if the element isn't tracked yet) - the
+                // attribute overwrite above is already sufficient on its own.
+            }
+
+            // Clear/refresh any error already shown for the old unit's limit.
+            if (qty_element.val() !== '') {
+                qty_element.valid();
+            }
+        }
     });
     toggle_search();
 });
@@ -1420,19 +1463,68 @@ $("#purchase_requisition_ids").on("select2:unselect", function (e) {
     });
 });
 
+// Shared by both unit dropdowns in the Damage/Loss modal: the base unit
+// (multiplier 1, always offered here even if the product is normally
+// restricted to purchasing in a box only - reporting on what's inside an
+// opened box isn't "purchasing"), followed by whatever other units the
+// row's own quantity unit dropdown offers. Defaults to the base unit.
+function __build_damage_loss_unit_options(select, row, base_unit_name) {
+    select.empty();
+    select.append($('<option>').val('base').attr('data-multiplier', 1).text(base_unit_name));
+    row.find('.sub_unit option').each(function() {
+        var multiplier = $(this).data('multiplier');
+        if (multiplier == 1) {
+            return; // already covered by the base-unit option above
+        }
+        select.append(
+            $('<option>').val($(this).val()).attr('data-multiplier', multiplier).text($(this).text().trim())
+        );
+    });
+    select.val('base');
+}
+
 //Damage/Loss modal: open pre-filled with the triggering row's current values
 $(document).on('click', '.damage_loss_btn', function(e) {
     e.preventDefault();
     var row_index = $(this).data('row');
     var row = $('tr[data-row-index="' + row_index + '"]');
+    var base_unit_name = row.data('base-unit-name') || '';
 
     $('#damage_loss_modal_row').val(row_index);
+
+    // Damage/Loss: unit selectable (defaults to Base Unit); the row's
+    // hidden values are always base-unit already, so they display correctly
+    // as soon as the dropdown defaults to "base".
+    __build_damage_loss_unit_options($('#damage_loss_modal_unit'), row, base_unit_name);
     __write_number($('#damage_loss_modal_qty_damaged'), __read_number(row.find('.damage_loss_qty_damaged'), true), true);
     __write_number($('#damage_loss_modal_qty_lost'), __read_number(row.find('.damage_loss_qty_lost'), true), true);
     $('#damage_loss_modal_reason').val(row.find('.damage_loss_reason_hidden').val()).trigger('change');
     $('#damage_loss_modal_note').val(row.find('.damage_loss_note_hidden').val());
 
+    // Usable/Reusable section only applies to products actually received in
+    // a box/carton (i.e. the row has a sub-unit dropdown) - for simple
+    // single-unit products there's no "inside the box" leftover to record.
+    var has_subunits = row.data('has-subunits') == 1;
+    if (has_subunits) {
+        __build_damage_loss_unit_options($('#damage_loss_modal_usable_unit'), row, base_unit_name);
+        __write_number($('#damage_loss_modal_usable_qty'), __read_number(row.find('.damage_loss_usable_qty'), true), true);
+        $('#damage_loss_modal_usable_section').removeClass('hide');
+    } else {
+        $('#damage_loss_modal_usable_section').addClass('hide');
+    }
+
     $('#damage_loss_modal').modal('show');
+});
+
+// Changing either unit mid-entry would otherwise silently reinterpret
+// whatever number is already typed under the new multiplier - clear it
+// instead so the user re-enters in the unit they just picked.
+$(document).on('change', '#damage_loss_modal_unit', function() {
+    __write_number($('#damage_loss_modal_qty_damaged'), 0, true);
+    __write_number($('#damage_loss_modal_qty_lost'), 0, true);
+});
+$(document).on('change', '#damage_loss_modal_usable_unit', function() {
+    __write_number($('#damage_loss_modal_usable_qty'), 0, true);
 });
 
 //Damage/Loss modal: write values back into the row's hidden inputs + refresh its badge
@@ -1441,23 +1533,44 @@ $(document).on('click', '#damage_loss_modal_save', function(e) {
     var row_index = $('#damage_loss_modal_row').val();
     var row = $('tr[data-row-index="' + row_index + '"]');
 
-    var qty_damaged = __read_number($('#damage_loss_modal_qty_damaged'), true);
-    var qty_lost = __read_number($('#damage_loss_modal_qty_lost'), true);
+    var unit_option = $('#damage_loss_modal_unit option:selected');
+    var unit_multiplier = parseFloat(unit_option.data('multiplier')) || 1;
+    var unit_name = unit_option.text();
+
+    var qty_damaged_entered = __read_number($('#damage_loss_modal_qty_damaged'), true);
+    var qty_lost_entered = __read_number($('#damage_loss_modal_qty_lost'), true);
     var reason = $('#damage_loss_modal_reason').val();
     var reason_text = $('#damage_loss_modal_reason option:selected').text();
     var note = $('#damage_loss_modal_note').val();
 
-    __write_number(row.find('.damage_loss_qty_damaged'), qty_damaged, true);
-    __write_number(row.find('.damage_loss_qty_lost'), qty_lost, true);
+    // Hidden row fields are always base-unit, per what ProductUtil expects.
+    __write_number(row.find('.damage_loss_qty_damaged'), qty_damaged_entered * unit_multiplier, true);
+    __write_number(row.find('.damage_loss_qty_lost'), qty_lost_entered * unit_multiplier, true);
     row.find('.damage_loss_reason_hidden').val(reason);
     row.find('.damage_loss_note_hidden').val(note);
 
-    var badge_parts = [];
-    if (qty_damaged) {
-        badge_parts.push(__number_f(qty_damaged, false) + ' ' + LANG.quantity_damaged);
+    var usable_visible = !$('#damage_loss_modal_usable_section').hasClass('hide');
+    var usable_entered = 0;
+    var usable_unit_name = '';
+    if (usable_visible) {
+        var usable_option = $('#damage_loss_modal_usable_unit option:selected');
+        var usable_multiplier = parseFloat(usable_option.data('multiplier')) || 1;
+        usable_unit_name = usable_option.text();
+        usable_entered = __read_number($('#damage_loss_modal_usable_qty'), true);
+        __write_number(row.find('.damage_loss_usable_qty'), usable_entered * usable_multiplier, true);
+    } else {
+        __write_number(row.find('.damage_loss_usable_qty'), 0, true);
     }
-    if (qty_lost) {
-        badge_parts.push(__number_f(qty_lost, false) + ' ' + LANG.quantity_lost);
+
+    var badge_parts = [];
+    if (qty_damaged_entered) {
+        badge_parts.push(__number_f(qty_damaged_entered, false) + ' ' + unit_name + ' ' + LANG.quantity_damaged);
+    }
+    if (qty_lost_entered) {
+        badge_parts.push(__number_f(qty_lost_entered, false) + ' ' + unit_name + ' ' + LANG.quantity_lost);
+    }
+    if (usable_entered) {
+        badge_parts.push(__number_f(usable_entered, false) + ' ' + usable_unit_name + ' ' + LANG.usable_qty);
     }
     var badge_text = badge_parts.join(', ');
     if (badge_text && reason) {

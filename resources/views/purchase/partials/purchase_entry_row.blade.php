@@ -1,5 +1,5 @@
 @foreach( $variations as $variation)
-    <tr data-row-index="{{ $row_count }}" @if(!empty($purchase_order_line)) data-purchase_order_id="{{$purchase_order_line->transaction_id}}" @endif @if(!empty($purchase_requisition_line)) data-purchase_requisition_id="{{$purchase_requisition_line->transaction_id}}" @endif>
+    <tr data-row-index="{{ $row_count }}" data-has-subunits="{{ !empty($sub_units) ? 1 : 0 }}" data-base-unit-name="{{ $product->unit->short_name }}" @if(!empty($purchase_order_line)) data-purchase_order_id="{{$purchase_order_line->transaction_id}}" @endif @if(!empty($purchase_requisition_line)) data-purchase_requisition_id="{{$purchase_requisition_line->transaction_id}}" @endif>
         <td><span class="sr_number"></span></td>
         <td>
             {{ $product->name }} ({{$variation->sub_sku}})
@@ -36,15 +36,48 @@
                 $quantity_value = !empty($purchase_order_line) ? $purchase_order_line->quantity : 1;
 
                 $quantity_value = !empty($purchase_requisition_line) ? $purchase_requisition_line->quantity - $purchase_requisition_line->po_quantity_purchased : $quantity_value;
-                $max_quantity = !empty($purchase_order_line) ? $purchase_order_line->quantity - $purchase_order_line->po_quantity_purchased : 0;
+                $max_quantity = !empty($purchase_order_line) ? $purchase_order_line->quantity - $purchase_order_line->po_quantity_purchased - $purchase_order_line->po_quantity_damaged - $purchase_order_line->po_quantity_lost : 0;
 
                 $max_quantity = !empty($purchase_requisition_line) ? $purchase_requisition_line->quantity - $purchase_requisition_line->po_quantity_purchased : $max_quantity;
 
                 $quantity_value = !empty($imported_data) ? $imported_data['quantity'] : $quantity_value;
+
+                // Figure out the pre-selected unit here (ahead of the <select>
+                // markup below) so the max-value rule can also be expressed in
+                // BASE units - the unit dropdown's change handler needs that to
+                // rescale the rule correctly if the user switches units, since
+                // $max_quantity above is already in the pre-selected unit's
+                // terms (the PO/requisition line was converted to that unit by
+                // the controller).
+                $_line_obj = null;
+                if (!empty($purchase_order_line)) {
+                    $_line_obj = $purchase_order_line;
+                } elseif (!empty($purchase_requisition_line)) {
+                    $_line_obj = $purchase_requisition_line;
+                } elseif (!empty($purchase_line)) {
+                    $_line_obj = $purchase_line;
+                }
+
+                $_preselect_purchase = null;
+                if (!empty($sub_units)) {
+                    if (!empty($_line_obj) && !empty($_line_obj->sub_unit_id) && isset($sub_units[$_line_obj->sub_unit_id])) {
+                        $_preselect_purchase = $_line_obj->sub_unit_id;
+                    } elseif (empty($imported_data) && !empty($product->default_purchase_sub_unit_id) && isset($sub_units[$product->default_purchase_sub_unit_id])) {
+                        $_preselect_purchase = $product->default_purchase_sub_unit_id;
+                    } else {
+                        $_first = array_key_first($sub_units);
+                        $_preselect_purchase = ($_first !== null) ? $_first : null;
+                    }
+                }
+
+                $_preselect_multiplier = (!empty($_preselect_purchase) && isset($sub_units[$_preselect_purchase]))
+                    ? ($sub_units[$_preselect_purchase]['multiplier'] ?? 1)
+                    : 1;
+                $max_quantity_base = $max_quantity * $_preselect_multiplier;
             @endphp
-            
-            <input type="text" 
-                name="purchases[{{$row_count}}][quantity]" 
+
+            <input type="text"
+                name="purchases[{{$row_count}}][quantity]"
                 value="{{@format_quantity($quantity_value)}}"
                 class="form-control input-sm purchase_quantity input_number mousetrap"
                 required
@@ -52,7 +85,8 @@
                 data-msg-abs_digit="{{__('lang_v1.decimal_value_not_allowed')}}"
                 @if(!empty($max_quantity))
                     data-rule-max-value="{{$max_quantity}}"
-                    data-msg-max-value="{{__('lang_v1.max_quantity_quantity_allowed', ['quantity' => $max_quantity])}}" 
+                    data-msg-max-value="{{__('lang_v1.max_quantity_quantity_allowed', ['quantity' => $max_quantity])}}"
+                    data-max-quantity-base="{{$max_quantity_base}}"
                 @endif
             >
 
@@ -63,35 +97,8 @@
             <input type="hidden" name="purchases[{{$row_count}}][product_unit_id]" value="{{$product->unit->id}}">
             @if(!empty($sub_units))
                 @php
-                    // Pre-select the unit of the line being pulled in
-                    // (purchase order / requisition lines are converted
-                    // into their sub-unit's terms by the controller, so
-                    // the pre-selected unit and the rendered quantity/
-                    // prices are consistent). Falls back to the
-                    // per-product default purchase sub-unit (e.g. Baby
-                    // Box when the supplier always delivers in baby
-                    // boxes) and then to the first unit in the list.
-                    // Imported CSV rows keep the first (base) unit —
-                    // their quantities/costs are raw from the file.
-                    $_line_obj = null;
-                    if (!empty($purchase_order_line)) {
-                        $_line_obj = $purchase_order_line;
-                    } elseif (!empty($purchase_requisition_line)) {
-                        $_line_obj = $purchase_requisition_line;
-                    } elseif (!empty($purchase_line)) {
-                        $_line_obj = $purchase_line;
-                    }
-
-                    $_preselect_purchase = null;
-                    if (!empty($_line_obj) && !empty($_line_obj->sub_unit_id) && isset($sub_units[$_line_obj->sub_unit_id])) {
-                        $_preselect_purchase = $_line_obj->sub_unit_id;
-                    } elseif (empty($imported_data) && !empty($product->default_purchase_sub_unit_id) && isset($sub_units[$product->default_purchase_sub_unit_id])) {
-                        $_preselect_purchase = $product->default_purchase_sub_unit_id;
-                    } else {
-                        $_first = array_key_first($sub_units);
-                        $_preselect_purchase = ($_first !== null) ? $_first : null;
-                    }
-
+                    // $_preselect_purchase was already computed above (needed
+                    // there to convert $max_quantity into base-unit terms too).
                     // Rows whose prices were prefilled from a negotiated
                     // source (PO lines, imported CSV costs) must not have
                     // them recomputed from the product's default price
@@ -284,6 +291,7 @@
                 {!! Form::hidden('purchases[' . $row_count . '][quantity_lost]', 0, ['class' => 'damage_loss_qty_lost']); !!}
                 {!! Form::hidden('purchases[' . $row_count . '][damage_loss_reason]', '', ['class' => 'damage_loss_reason_hidden']); !!}
                 {!! Form::hidden('purchases[' . $row_count . '][damage_loss_note]', '', ['class' => 'damage_loss_note_hidden']); !!}
+                {!! Form::hidden('purchases[' . $row_count . '][usable_qty]', 0, ['class' => 'damage_loss_usable_qty']); !!}
             </td>
         @endif
         <?php $row_count++ ;?>

@@ -46,7 +46,7 @@
         <tbody>
     <?php $row_count = 0; ?>
     @foreach($purchase->purchase_lines as $purchase_line)
-        <tr data-row-index="{{ $loop->index }}" @if(!empty($purchase_line->purchase_order_line) && !empty($common_settings['enable_purchase_order'])) data-purchase_order_id="{{$purchase_line->purchase_order_line->transaction_id}}" @endif  @if(!empty($purchase_line->purchase_requisition_line) && !empty($common_settings['enable_purchase_requisition'])) data-purchase_requisition_id="{{$purchase_line->purchase_requisition_line->transaction_id}}" @endif>
+        <tr data-row-index="{{ $loop->index }}" data-has-subunits="{{ !empty($purchase_line->sub_units_options) ? 1 : 0 }}" data-base-unit-name="{{ $purchase_line->product->unit->short_name }}" @if(!empty($purchase_line->purchase_order_line) && !empty($common_settings['enable_purchase_order'])) data-purchase_order_id="{{$purchase_line->purchase_order_line->transaction_id}}" @endif  @if(!empty($purchase_line->purchase_requisition_line) && !empty($common_settings['enable_purchase_requisition'])) data-purchase_requisition_id="{{$purchase_line->purchase_requisition_line->transaction_id}}" @endif>
             <td><span class="sr_number"></span></td>
             <td>
                 {{ $purchase_line->product->name }} ({{$purchase_line->variations->sub_sku}})
@@ -75,14 +75,32 @@
                         $check_decimal = 'true';
                     }
                     $max_quantity = 0;
+                    $max_quantity_base = 0;
+
+                    // This line's own quantity/quantity_damaged/quantity_lost
+                    // were already divided by its saved unit's multiplier for
+                    // display (changePurchaseLineUnit()), but the related PO
+                    // line's fields are always raw base-unit - convert this
+                    // line's figures back to base units before combining them,
+                    // to avoid mixing units in the same subtraction.
+                    $_multiplier = (!empty($purchase_line->sub_unit_id) && !empty($purchase_line->sub_unit))
+                        ? ($purchase_line->sub_unit->base_unit_multiplier ?: 1)
+                        : 1;
 
                     if(!empty($purchase_line->purchase_order_line_id) && !empty($common_settings['enable_purchase_order'])){
-                        $max_quantity = $purchase_line->purchase_order_line->quantity - $purchase_line->purchase_order_line->po_quantity_purchased + $purchase_line->quantity;
+                        $max_quantity_base = $purchase_line->purchase_order_line->quantity
+                            - $purchase_line->purchase_order_line->po_quantity_purchased
+                            - $purchase_line->purchase_order_line->po_quantity_damaged
+                            - $purchase_line->purchase_order_line->po_quantity_lost
+                            + ($purchase_line->quantity * $_multiplier)
+                            + ($purchase_line->quantity_damaged * $_multiplier)
+                            + ($purchase_line->quantity_lost * $_multiplier);
+                        $max_quantity = $max_quantity_base / $_multiplier;
                     }
                 @endphp
 
-                <input type="text" 
-                name="purchases[{{$loop->index}}][quantity]" 
+                <input type="text"
+                name="purchases[{{$loop->index}}][quantity]"
                 value="{{@format_quantity($purchase_line->quantity)}}"
                 class="form-control input-sm purchase_quantity input_number mousetrap"
                 required
@@ -90,7 +108,8 @@
                 data-msg-abs_digit="{{__('lang_v1.decimal_value_not_allowed')}}"
                 @if(!empty($max_quantity))
                     data-rule-max-value="{{$max_quantity}}"
-                    data-msg-max-value="{{__('lang_v1.max_quantity_quantity_allowed', ['quantity' => $max_quantity])}}" 
+                    data-msg-max-value="{{__('lang_v1.max_quantity_quantity_allowed', ['quantity' => $max_quantity])}}"
+                    data-max-quantity-base="{{$max_quantity_base}}"
                 @endif
                 >
 
@@ -271,6 +290,7 @@
                     {!! Form::hidden('purchases[' . $loop->index . '][quantity_lost]', @format_quantity($purchase_line->quantity_lost), ['class' => 'damage_loss_qty_lost']); !!}
                     {!! Form::hidden('purchases[' . $loop->index . '][damage_loss_reason]', $purchase_line->damage_loss_reason, ['class' => 'damage_loss_reason_hidden']); !!}
                     {!! Form::hidden('purchases[' . $loop->index . '][damage_loss_note]', $purchase_line->damage_loss_note, ['class' => 'damage_loss_note_hidden']); !!}
+                    {!! Form::hidden('purchases[' . $loop->index . '][usable_qty]', 0, ['class' => 'damage_loss_usable_qty']); !!}
                 </td>
             @endif
             <td><i class="fa fa-times remove_purchase_entry_row text-danger" title="Remove" style="cursor:pointer;"></i></td>

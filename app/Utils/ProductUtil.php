@@ -1289,17 +1289,33 @@ class ProductUtil extends Util
             $new_quantity = $this->num_uf($data['quantity']) * $multiplier;
 
             //Damaged/lost quantity is additional to (not part of) the received
-            //quantity above - it's tracked for reporting only and never added to stock.
-            $damaged_qty = ! empty($data['quantity_damaged']) ? $this->num_uf($data['quantity_damaged']) * $multiplier : 0;
-            $lost_qty = ! empty($data['quantity_lost']) ? $this->num_uf($data['quantity_lost']) * $multiplier : 0;
+            //quantity above - it's tracked for reporting only and never added to
+            //stock. Entered directly in the product's BASE unit (the Mark
+            //Damage/Loss modal lets the user pick any unit and converts to base
+            //unit client-side before submitting), independent of whatever unit
+            //the main "quantity" above uses - so a whole-box-denominated line
+            //can still report e.g. "3 Strip damaged" precisely.
+            $damaged_qty = ! empty($data['quantity_damaged']) ? $this->num_uf($data['quantity_damaged']) : 0;
+            $lost_qty = ! empty($data['quantity_lost']) ? $this->num_uf($data['quantity_lost']) : 0;
+
+            // Usable/reusable quantity: the good portion salvaged from an
+            // opened/mixed-condition box, on top of the main "quantity" above.
+            // Also always base-unit already for the same reason.
+            $usable_qty = ! empty($data['usable_qty']) ? $this->num_uf($data['usable_qty']) : 0;
+
+            $new_quantity += $usable_qty;
 
             $new_quantity_f = $this->num_f($new_quantity);
             $old_qty = 0;
+            $old_damaged_qty = 0;
+            $old_lost_qty = 0;
             //update existing purchase line
             if (isset($data['purchase_line_id'])) {
                 $purchase_line = PurchaseLine::findOrFail($data['purchase_line_id']);
                 $updated_purchase_line_ids[] = $purchase_line->id;
                 $old_qty = $purchase_line->quantity;
+                $old_damaged_qty = $purchase_line->quantity_damaged;
+                $old_lost_qty = $purchase_line->quantity_lost;
 
                 $this->updateProductStock($before_status, $transaction, $data['product_id'], $data['variation_id'], $new_quantity, $purchase_line->quantity, $currency_details);
             } else {
@@ -1314,11 +1330,29 @@ class ProductUtil extends Util
                 }
             }
 
+            //A PO line stops accepting GRNs once received+damaged+lost equals the
+            //ordered quantity - reject before any stock/line mutation is persisted.
+            if (! empty($data['purchase_order_line_id'])) {
+                $incoming_diff = ($new_quantity - $old_qty) + ($damaged_qty - $old_damaged_qty) + ($lost_qty - $old_lost_qty);
+                $this->assertPurchaseOrderLineHasCapacity($data['purchase_order_line_id'], $incoming_diff);
+            }
+
             $purchase_line->quantity = $new_quantity;
             $purchase_line->quantity_damaged = $damaged_qty;
             $purchase_line->quantity_lost = $lost_qty;
             $purchase_line->damage_loss_reason = ! empty($data['damage_loss_reason']) ? $data['damage_loss_reason'] : null;
-            $purchase_line->damage_loss_note = ! empty($data['damage_loss_note']) ? $data['damage_loss_note'] : null;
+
+            $damage_loss_note = ! empty($data['damage_loss_note']) ? $data['damage_loss_note'] : null;
+            if ($usable_qty > 0) {
+                $product_for_note = Product::find($data['product_id']);
+                $base_unit_name = ! empty($product_for_note) && ! empty($product_for_note->unit) ? $product_for_note->unit->short_name : '';
+                $usable_breakdown = __('lang_v1.partial_box_note_breakdown', [
+                    'usable' => $this->num_f($usable_qty, false, null, true),
+                    'unit' => $base_unit_name,
+                ]);
+                $damage_loss_note = trim($damage_loss_note.' '.$usable_breakdown);
+            }
+            $purchase_line->damage_loss_note = $damage_loss_note;
             $purchase_line->pp_without_discount = ($this->num_uf($data['pp_without_discount'], $currency_details) * $exchange_rate) / $multiplier;
             $purchase_line->discount_percent = $this->num_uf($data['discount_percent'], $currency_details);
             $purchase_line->purchase_price = ($this->num_uf($data['purchase_price'], $currency_details) * $exchange_rate) / $multiplier;
@@ -1355,8 +1389,16 @@ class ProductUtil extends Util
                 $this->updatePurchaseOrderLine($purchase_line->purchase_requisition_line_id, $purchase_line->quantity, $old_qty);
             }
 
-            //Update purchase order line quantity received
-            $this->updatePurchaseOrderLine($purchase_line->purchase_order_line_id, $purchase_line->quantity, $old_qty);
+            //Update purchase order line quantity received (good, damaged, lost)
+            $this->updatePurchaseOrderLine(
+                $purchase_line->purchase_order_line_id,
+                $purchase_line->quantity,
+                $old_qty,
+                $purchase_line->quantity_damaged,
+                $old_damaged_qty,
+                $purchase_line->quantity_lost,
+                $old_lost_qty
+            );
         }
 
         //unset deleted purchase lines
@@ -1383,7 +1425,15 @@ class ProductUtil extends Util
 
                     //If purchase order line set decrease quntity
                     if (! empty($delete_purchase_line->purchase_order_line_id)) {
-                        $this->updatePurchaseOrderLine($delete_purchase_line->purchase_order_line_id, 0, $delete_purchase_line->quantity);
+                        $this->updatePurchaseOrderLine(
+                            $delete_purchase_line->purchase_order_line_id,
+                            0,
+                            $delete_purchase_line->quantity,
+                            0,
+                            $delete_purchase_line->quantity_damaged,
+                            0,
+                            $delete_purchase_line->quantity_lost
+                        );
                     }
 
                     //If purchase order line set decrease quntity
@@ -1413,13 +1463,50 @@ class ProductUtil extends Util
         return $delete_purchase_lines;
     }
 
-    public function updatePurchaseOrderLine($purchase_order_line_id, $new_qty, $old_qty = 0)
+    public function updatePurchaseOrderLine($purchase_order_line_id, $new_qty, $old_qty = 0, $new_damaged_qty = 0, $old_damaged_qty = 0, $new_lost_qty = 0, $old_lost_qty = 0)
     {
         $diff = $new_qty - $old_qty;
-        if (! empty($purchase_order_line_id) && ! empty($diff)) {
+        $damaged_diff = $new_damaged_qty - $old_damaged_qty;
+        $lost_diff = $new_lost_qty - $old_lost_qty;
+
+        if (! empty($purchase_order_line_id) && (! empty($diff) || ! empty($damaged_diff) || ! empty($lost_diff))) {
             $purchase_order_line = PurchaseLine::find($purchase_order_line_id);
-            $purchase_order_line->po_quantity_purchased += ($diff);
+            $purchase_order_line->po_quantity_purchased += $diff;
+            $purchase_order_line->po_quantity_damaged += $damaged_diff;
+            $purchase_order_line->po_quantity_lost += $lost_diff;
             $purchase_order_line->save();
+        }
+    }
+
+    /**
+     * A PO line is fully accounted for once received + damaged + lost equals
+     * the ordered quantity - once that happens no further GRN may be created
+     * against it (a resolved support ticket is the only way to reopen it, by
+     * reducing po_quantity_damaged/po_quantity_lost back down).
+     *
+     * @param  int  $purchase_order_line_id
+     * @param  float  $incoming_diff  net qty this GRN line is adding to the PO line
+     *
+     * @throws \Exception
+     */
+    public function assertPurchaseOrderLineHasCapacity($purchase_order_line_id, $incoming_diff)
+    {
+        if ($incoming_diff <= 0) {
+            return;
+        }
+
+        $purchase_order_line = PurchaseLine::find($purchase_order_line_id);
+        if (empty($purchase_order_line)) {
+            return;
+        }
+
+        $accounted_for = $purchase_order_line->po_quantity_purchased
+            + $purchase_order_line->po_quantity_damaged
+            + $purchase_order_line->po_quantity_lost;
+        $remaining = $purchase_order_line->quantity - $accounted_for;
+
+        if ($incoming_diff > ($remaining + 0.0001)) {
+            throw new \Exception(__('lang_v1.po_line_fully_accounted_for'));
         }
     }
 

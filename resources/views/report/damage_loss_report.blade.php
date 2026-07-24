@@ -47,6 +47,7 @@
                                 <th>@lang('sale.product')</th>
                                 <th>@lang('product.sku')</th>
                                 <th>@lang('purchase.grn_no')</th>
+                                <th>@lang('lang_v1.purchase_order')</th>
                                 <th>@lang('messages.date')</th>
                                 <th>@lang('purchase.location')</th>
                                 <th>@lang('purchase.supplier')</th>
@@ -55,12 +56,14 @@
                                 <th>@lang('purchase.damage_loss_reason')</th>
                                 <th>@lang('purchase.damage_loss_note')</th>
                                 <th>@lang('purchase.damage_loss_value')</th>
+                                <th>@lang('messages.action')</th>
                             </tr>
                         </thead>
                         <tfoot>
                             <tr class="bg-gray font-17 footer-total text-center">
-                                <td colspan="10"><strong>@lang('sale.total'):</strong></td>
+                                <td colspan="11"><strong>@lang('sale.total'):</strong></td>
                                 <td><span class="display_currency" id="footer_damage_loss_value" data-currency_symbol="true"></span></td>
+                                <td></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -70,9 +73,6 @@
     </div>
 </section>
 <!-- /.content -->
-<div class="modal fade view_modal" tabindex="-1" role="dialog"
-    aria-labelledby="gridSystemModalLabel">
-</div>
 
 @endsection
 

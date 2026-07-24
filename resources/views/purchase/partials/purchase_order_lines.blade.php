@@ -1,5 +1,5 @@
 @foreach($purchase_order->purchase_lines as $purchase_line)
-	@if($purchase_line->quantity - $purchase_line->po_quantity_purchased > 0)
+	@if($purchase_line->quantity - $purchase_line->po_quantity_purchased - $purchase_line->po_quantity_damaged - $purchase_line->po_quantity_lost > 0)
 		@include('purchase.partials.purchase_entry_row', [
 			'variations' => [$purchase_line->variations],
 			'product' => $purchase_line->product,

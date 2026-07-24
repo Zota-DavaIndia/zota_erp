@@ -182,5 +182,7 @@ LANG = {
 
     // GRN damage/loss
     'quantity_damaged': 'Damaged Qty',
-    'quantity_lost': 'Lost Qty'
+    'quantity_lost': 'Lost Qty',
+    'usable_qty': 'Usable Qty',
+    'max_quantity_quantity_allowed': 'Max :quantity allowed'
 };

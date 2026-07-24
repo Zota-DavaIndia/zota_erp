@@ -671,6 +671,8 @@ class Util
 
         $purchase_line->quantity = $purchase_line->quantity / $multiplier;
         $purchase_line->po_quantity_purchased = $purchase_line->po_quantity_purchased / $multiplier;
+        $purchase_line->po_quantity_damaged = $purchase_line->po_quantity_damaged / $multiplier;
+        $purchase_line->po_quantity_lost = $purchase_line->po_quantity_lost / $multiplier;
         $purchase_line->pp_without_discount = $purchase_line->pp_without_discount * $multiplier;
         $purchase_line->purchase_price = $purchase_line->purchase_price * $multiplier;
         $purchase_line->purchase_price_inc_tax = $purchase_line->purchase_price_inc_tax * $multiplier;

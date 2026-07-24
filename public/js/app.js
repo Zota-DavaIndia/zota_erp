@@ -2973,5 +2973,114 @@ $(document).on('submit', 'form#pay_contact_due_form', function(e){
     } else {
         $('#pay_contact_due_form').find('.cash_denomination_error').addClass('hide');
     }
-    
+
 })
+
+$(document).on('submit', 'form#support_ticket_create_form', function(e) {
+    e.preventDefault();
+    var form = $(this);
+    var data = form.serialize();
+
+    $.ajax({
+        method: 'POST',
+        url: form.attr('action'),
+        dataType: 'json',
+        data: data,
+        beforeSend: function(xhr) {
+            __disable_submit_button(form.find('button[type="submit"]'));
+        },
+        success: function(result) {
+            if (result.success == 1) {
+                $('div.view_modal').modal('hide');
+                toastr.success(result.msg);
+                if (typeof support_ticket_index_table !== 'undefined') {
+                    support_ticket_index_table.ajax.reload();
+                }
+                if (typeof damage_loss_report !== 'undefined') {
+                    damage_loss_report.ajax.reload();
+                }
+            } else {
+                toastr.error(result.msg);
+            }
+        },
+    });
+});
+
+$(document).on('submit', 'form#support_ticket_close_form', function(e) {
+    e.preventDefault();
+    var form = $(this);
+    var data = form.serialize();
+
+    $.ajax({
+        method: 'POST',
+        url: form.attr('action'),
+        dataType: 'json',
+        data: data,
+        beforeSend: function(xhr) {
+            __disable_submit_button(form.find('button[type="submit"]'));
+        },
+        success: function(result) {
+            if (result.success == 1) {
+                $('div.view_modal').modal('hide');
+                toastr.success(result.msg);
+                if (typeof support_ticket_index_table !== 'undefined') {
+                    support_ticket_index_table.ajax.reload();
+                }
+                if (typeof support_ticket_dashboard_table !== 'undefined') {
+                    support_ticket_dashboard_table.ajax.reload();
+                }
+                if (typeof damage_loss_report !== 'undefined') {
+                    damage_loss_report.ajax.reload();
+                }
+            } else {
+                toastr.error(result.msg);
+            }
+        },
+    });
+});
+
+$(document).on('submit', 'form#support_ticket_log_form', function(e) {
+    e.preventDefault();
+    var form = $(this);
+    var data = form.serialize();
+    var show_url = form.data('show-url');
+
+    $.ajax({
+        method: 'POST',
+        url: form.attr('action'),
+        dataType: 'json',
+        data: data,
+        beforeSend: function(xhr) {
+            __disable_submit_button(form.find('button[type="submit"]'));
+        },
+        success: function(result) {
+            if (result.success == 1) {
+                toastr.success(result.msg);
+                if (show_url) {
+                    // Submitted from inside the full ticket detail - reload it
+                    // in place, the modal stays open.
+                    $.ajax({
+                        url: show_url,
+                        dataType: 'html',
+                        success: function(html) {
+                            $('div.view_modal').html(html);
+                        },
+                    });
+                } else {
+                    // Submitted from the standalone "Add Log" modal - close it
+                    // and refresh whichever list table is on screen.
+                    $('div.view_modal').modal('hide');
+                    if (typeof support_ticket_index_table !== 'undefined') {
+                        support_ticket_index_table.ajax.reload();
+                    }
+                    if (typeof support_ticket_dashboard_table !== 'undefined') {
+                        support_ticket_dashboard_table.ajax.reload();
+                    }
+                }
+            } else {
+                toastr.error(result.msg);
+                form.find('button[type="submit"]').attr('disabled', false);
+            }
+        },
+    });
+});

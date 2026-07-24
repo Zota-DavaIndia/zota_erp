@@ -108,7 +108,7 @@ class PurchaseOrderController extends Controller
                         'transactions.pay_term_type',
                         'transactions.shipping_status',
                         DB::raw("CONCAT(COALESCE(u.surname, ''),' ',COALESCE(u.first_name, ''),' ',COALESCE(u.last_name,'')) as added_by"),
-                        DB::raw('SUM(pl.quantity - pl.po_quantity_purchased) as po_qty_remaining')
+                        DB::raw('SUM(pl.quantity - pl.po_quantity_purchased - pl.po_quantity_damaged - pl.po_quantity_lost) as po_qty_remaining')
                     )
                     ->groupBy('transactions.id');
 

@@ -877,7 +877,7 @@ $(document).ready(function() {
             processing: true,
             serverSide: true,
             fixedHeader: false,
-            aaSorting: [[3, 'desc']],
+            aaSorting: [[4, 'desc']],
             ajax: {
                 url: '/reports/damage-loss-report',
                 data: function(d) {
@@ -900,6 +900,7 @@ $(document).ready(function() {
                 { data: 'product_name', name: 'p.name' },
                 { data: 'sub_sku', name: 'v.sub_sku' },
                 { data: 'ref_no', name: 't.ref_no' },
+                { data: 'purchase_order_ref_no', name: 'po_t.ref_no' },
                 { data: 'transaction_date', name: 't.transaction_date' },
                 { data: 'location_name', name: 'bl.name' },
                 { data: 'supplier', name: 'c.name' },
@@ -908,6 +909,7 @@ $(document).ready(function() {
                 { data: 'damage_loss_reason', name: 'purchase_lines.damage_loss_reason' },
                 { data: 'damage_loss_note', name: 'purchase_lines.damage_loss_note' },
                 { data: 'damage_loss_value', name: 'damage_loss_value', searchable: false },
+                { data: 'action', name: 'action', orderable: false, searchable: false },
             ],
             fnDrawCallback: function(oSettings) {
                 $('#footer_damage_loss_value').text(

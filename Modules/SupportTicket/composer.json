@@ -1,0 +1,22 @@
+{
+    "name": "twf/supportticket",
+    "description": "",
+    "authors": [
+        {
+            "name": "GITCS"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Modules\\SupportTicket\\Providers\\SupportTicketServiceProvider"
+            ],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\SupportTicket\\": ""
+        }
+    }
+}

@@ -20,5 +20,6 @@
     "CustomDashboard": true,
     "Gym": true,
     "ZatcaIntegrationKsa": true,
-    "Cheque": true
+    "Cheque": true,
+    "SupportTicket": true
 }

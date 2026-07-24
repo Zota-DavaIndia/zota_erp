@@ -422,6 +422,8 @@ class BusinessController extends Controller
 
             $business_details['stock_expiry_alert_days'] = ! empty($request->input('stock_expiry_alert_days')) ? $request->input('stock_expiry_alert_days') : 30;
 
+            $business_details['support_ticket_tat_hours'] = ! empty($request->input('support_ticket_tat_hours')) ? $request->input('support_ticket_tat_hours') : 48;
+
             //Check for Purchase currency
             if (! empty($request->input('purchase_in_diff_currency')) && $request->input('purchase_in_diff_currency') == 1) {
                 $business_details['purchase_in_diff_currency'] = 1;

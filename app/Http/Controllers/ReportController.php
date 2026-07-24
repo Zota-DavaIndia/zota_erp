@@ -1858,6 +1858,9 @@ class ReportController extends Controller
                     ->join('products as p', 'pv.product_id', '=', 'p.id')
                     ->join('business_locations as bl', 't.location_id', '=', 'bl.id')
                     ->leftjoin('units as u', 'p.unit_id', '=', 'u.id')
+                    ->leftjoin('purchase_lines as po_pl', 'purchase_lines.purchase_order_line_id', '=', 'po_pl.id')
+                    ->leftjoin('transactions as po_t', 'po_pl.transaction_id', '=', 'po_t.id')
+                    ->leftjoin('support_tickets as st', 'st.purchase_line_id', '=', 'purchase_lines.id')
                     ->where('t.business_id', $business_id)
                     ->where('t.type', 'purchase')
                     ->where(function ($q) {
@@ -1865,6 +1868,7 @@ class ReportController extends Controller
                             ->orWhere('purchase_lines.quantity_lost', '>', 0);
                     })
                     ->select(
+                        'purchase_lines.id as purchase_line_id',
                         'p.name as product_name',
                         'p.type as product_type',
                         'pv.name as product_variation',
@@ -1876,11 +1880,16 @@ class ReportController extends Controller
                         't.id as transaction_id',
                         't.ref_no',
                         't.transaction_date as transaction_date',
+                        'po_t.id as purchase_order_id',
+                        'po_t.ref_no as purchase_order_ref_no',
                         'purchase_lines.quantity_damaged',
                         'purchase_lines.quantity_lost',
                         'purchase_lines.damage_loss_reason',
                         'purchase_lines.damage_loss_note',
                         'u.short_name as unit',
+                        'st.id as ticket_id',
+                        'st.ticket_number',
+                        'st.status as ticket_status',
                         DB::raw('((purchase_lines.quantity_damaged + purchase_lines.quantity_lost) * purchase_lines.purchase_price_inc_tax) as damage_loss_value')
                     );
 
@@ -1912,6 +1921,14 @@ class ReportController extends Controller
                     return '<a data-href="'.action([\App\Http\Controllers\PurchaseController::class, 'show'], [$row->transaction_id])
                             .'" href="#" data-container=".view_modal" class="btn-modal">'.$row->ref_no.'</a>';
                 })
+                ->editColumn('purchase_order_ref_no', function ($row) {
+                    if (empty($row->purchase_order_id)) {
+                        return '--';
+                    }
+
+                    return '<a data-href="'.action([\App\Http\Controllers\PurchaseOrderController::class, 'show'], [$row->purchase_order_id])
+                            .'" href="#" data-container=".view_modal" class="btn-modal">'.$row->purchase_order_ref_no.'</a>';
+                })
                 ->editColumn('transaction_date', '{{@format_date($transaction_date)}}')
                 ->editColumn('quantity_damaged', function ($row) {
                     return (float) $row->quantity_damaged.' '.$row->unit;
@@ -1926,7 +1943,24 @@ class ReportController extends Controller
                     return '<span class="damage_loss_value" data-orig-value="'.$row->damage_loss_value.'">'.$this->transactionUtil->num_f($row->damage_loss_value, true).'</span>';
                 })
                 ->editColumn('supplier', '@if(!empty($supplier_business_name)) {{$supplier_business_name}},<br>@endif {{$supplier}}')
-                ->rawColumns(['ref_no', 'supplier', 'damage_loss_value'])
+                ->addColumn('action', function ($row) {
+                    if (! empty($row->ticket_id)) {
+                        $badge_class = $row->ticket_status == 'open' ? 'bg-yellow' : 'bg-green';
+
+                        return '<a data-href="'.action([\Modules\SupportTicket\Http\Controllers\SupportTicketController::class, 'show'], [$row->ticket_id])
+                                .'" href="#" data-container=".view_modal" class="btn-modal btn btn-xs '.$badge_class.'">'
+                                .$row->ticket_number.' ('.ucfirst($row->ticket_status).')</a>';
+                    }
+
+                    if (! auth()->user()->can('support_ticket.create')) {
+                        return '--';
+                    }
+
+                    return '<a data-href="'.action([\Modules\SupportTicket\Http\Controllers\SupportTicketController::class, 'create'], [$row->purchase_line_id])
+                            .'" href="#" data-container=".view_modal" class="btn-modal btn btn-xs btn-primary">'
+                            .__('lang_v1.raise_support_ticket').'</a>';
+                })
+                ->rawColumns(['ref_no', 'purchase_order_ref_no', 'supplier', 'damage_loss_value', 'action'])
                 ->make(true);
         }
 

@@ -10,14 +10,22 @@
             <div class="modal-body">
                 <p class="text-muted small">@lang('purchase.damage_loss_help')</p>
                 <input type="hidden" id="damage_loss_modal_row">
+
+                <strong>@lang('lang_v1.damage_loss_section')</strong>
                 <div class="row">
-                    <div class="col-sm-6">
+                    <div class="col-sm-4">
+                        <div class="form-group">
+                            {!! Form::label('damage_loss_modal_unit', __('lang_v1.partial_unit') . ':') !!}
+                            <select id="damage_loss_modal_unit" class="form-control input-sm"></select>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
                         <div class="form-group">
                             {!! Form::label('damage_loss_modal_qty_damaged', __('purchase.quantity_damaged') . ':') !!}
                             {!! Form::text('damage_loss_modal_qty_damaged', 0, ['id' => 'damage_loss_modal_qty_damaged', 'class' => 'form-control input_number']); !!}
                         </div>
                     </div>
-                    <div class="col-sm-6">
+                    <div class="col-sm-4">
                         <div class="form-group">
                             {!! Form::label('damage_loss_modal_qty_lost', __('purchase.quantity_lost') . ':') !!}
                             {!! Form::text('damage_loss_modal_qty_lost', 0, ['id' => 'damage_loss_modal_qty_lost', 'class' => 'form-control input_number']); !!}
@@ -37,6 +45,26 @@
                         <div class="form-group">
                             {!! Form::label('damage_loss_modal_note', __('purchase.damage_loss_note') . ':') !!}
                             {!! Form::textarea('damage_loss_modal_note', null, ['id' => 'damage_loss_modal_note', 'class' => 'form-control', 'rows' => 2]); !!}
+                        </div>
+                    </div>
+                </div>
+
+                <div id="damage_loss_modal_usable_section" class="hide">
+                    <hr>
+                    <strong>@lang('lang_v1.usable_qty_section')</strong>
+                    <p class="text-muted small">@lang('lang_v1.usable_qty_help')</p>
+                    <div class="row">
+                        <div class="col-sm-4">
+                            <div class="form-group">
+                                {!! Form::label('damage_loss_modal_usable_unit', __('lang_v1.partial_unit') . ':') !!}
+                                <select id="damage_loss_modal_usable_unit" class="form-control input-sm"></select>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="form-group">
+                                {!! Form::label('damage_loss_modal_usable_qty', __('lang_v1.usable_qty') . ':') !!}
+                                {!! Form::text('damage_loss_modal_usable_qty', 0, ['id' => 'damage_loss_modal_usable_qty', 'class' => 'form-control input_number']); !!}
+                            </div>
                         </div>
                     </div>
                 </div>

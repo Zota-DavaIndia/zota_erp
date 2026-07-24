@@ -87,5 +87,5 @@ return [
     'mark_damage_loss' => 'Mark Damage / Loss',
     'linked_po' => 'Purchase Order',
     'damage_loss_report' => 'Damage & Loss Report',
-    'damage_loss_help' => 'Enter damaged/lost quantity in addition to the good Purchase Quantity above (e.g. Purchase Quantity 3 + Damaged 2 = 5 units physically received). These units are never added to stock.',
+    'damage_loss_help' => 'Enter damaged/lost quantity in addition to the good Purchase Quantity above (e.g. Purchase Quantity 3 + Damaged 2 = 5 units physically received). These units are never added to stock. You can select a different unit below and enter the quantity in that unit - e.g. report 3 Strip damaged even though the Purchase Quantity above is in Baby Box.',
 ];

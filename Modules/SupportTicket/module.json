@@ -1,0 +1,14 @@
+{
+    "name": "SupportTicket",
+    "alias": "supportticket",
+    "description": "Damage/loss support ticket workflow for purchase orders.",
+    "keywords": [],
+    "active": 1,
+    "order": 0,
+    "providers": [
+        "Modules\\SupportTicket\\Providers\\SupportTicketServiceProvider"
+    ],
+    "aliases": {},
+    "files": [],
+    "requires": []
+}

@@ -6659,9 +6659,16 @@ class TransactionUtil extends Util
             }
             $total_ordered = $purchase_order->purchase_lines->sum('quantity');
             $total_received = $purchase_order->purchase_lines->sum('po_quantity_purchased');
+            $total_damaged = $purchase_order->purchase_lines->sum('po_quantity_damaged');
+            $total_lost = $purchase_order->purchase_lines->sum('po_quantity_lost');
+
+            //A PO is completed once received+damaged+lost accounts for the full
+            //ordered quantity - damaged/lost units are "accounted for", not
+            //outstanding, until a support ticket reopens their PO line.
+            $total_accounted = $total_received + $total_damaged + $total_lost;
 
             $status = $total_received == 0 ? 'ordered' : 'partial';
-            if ($total_ordered == $total_received) {
+            if (abs($total_ordered - $total_accounted) < 0.0001) {
                 $status = 'completed';
             }
             $purchase_order->status = $status;

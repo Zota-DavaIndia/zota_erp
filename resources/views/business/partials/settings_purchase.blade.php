@@ -94,6 +94,17 @@
         </div>
     </div>
 
+    <div class="col-sm-6">
+        <div class="form-group">
+            {!! Form::label('support_ticket_tat_hours', __('lang_v1.support_ticket_tat_hours') . ':') !!}
+            @show_tooltip(__('lang_v1.tooltip_support_ticket_tat_hours'))
+            <div class="input-group">
+                <span class="input-group-addon"><i class="fa fa-clock"></i></span>
+                {!! Form::number('support_ticket_tat_hours', $business->support_ticket_tat_hours, ['class' => 'form-control', 'placeholder' => __('lang_v1.support_ticket_tat_hours'), 'min' => 1]); !!}
+            </div>
+        </div>
+    </div>
+
     <div class="clearfix"></div>
 
     <div class="col-sm-6">
